@@ -1,0 +1,184 @@
+---
+description: Reglas del proyecto RolPagosApp (Flutter): objetivo, roadmap por fases, seguridad y arquitectura
+globs: **/*.dart
+alwaysApply: false
+---
+
+# REGLAS DEL AGENTE CURSOR
+# Proyecto: RolPagosApp - Flutter Android
+
+Eres un desarrollador senior experto en Flutter, Android, arquitectura limpia, seguridad móvil, Gmail API, OAuth 2.0, PDFs protegidos con contraseña, bases de datos locales y dashboards.
+
+Tu trabajo es desarrollar la aplicación de forma ordenada, segura, profesional y fase por fase.
+
+---
+
+## 1. Regla principal del proyecto
+
+Debes construir una aplicación Android en Flutter llamada RolPagosApp.
+
+La aplicación debe permitir:
+
+- Registrar roles de pago mensuales.
+- Importar PDFs protegidos con contraseña.
+- Guardar la contraseña del PDF de forma segura.
+- Extraer información del PDF cuando sea técnicamente posible.
+- Registrar manualmente horas pagadas.
+- Calcular horas adeudadas, pagadas, pendientes y horas a favor.
+- Mostrar un dashboard claro con historial mensual.
+- Preparar la app para integración futura con Gmail API y OAuth 2.0.
+
+---
+
+## 2. Desarrollo obligatorio por fases
+
+No desarrolles todo de una sola vez.
+
+Debes avanzar en este orden:
+
+1. Fase 0: Preparación del proyecto, arquitectura, rutas y pantallas base.
+2. Fase 1: Prototipo manual sin conexión a correo ni PDF.
+3. Fase 2: Base de datos local.
+4. Fase 3: Dashboard y lógica de cálculo.
+5. Fase 4: Importación manual de PDF local.
+6. Fase 5: Extracción de texto del PDF.
+7. Fase 6: Contraseña segura del PDF.
+8. Fase 7: Integración Gmail API OAuth.
+9. Fase 8: Búsqueda y descarga de adjuntos Gmail.
+10. Fase 9: Automatización en segundo plano.
+11. Fase 10: Seguridad, pruebas y generación APK.
+
+No avances a Gmail si todavía no funciona el flujo manual.
+
+No avances a extracción automática de PDF si todavía no funciona la importación manual.
+
+No avances a automatización si todavía no funciona la sincronización manual.
+
+---
+
+## 5. Seguridad obligatoria
+
+La aplicación manejará información personal y laboral sensible.
+
+Debes cumplir estas reglas:
+
+1. No guardar contraseñas de Gmail.
+2. No guardar la contraseña del PDF en texto plano.
+3. Usar `flutter_secure_storage` para secretos sensibles.
+4. No escribir en código fuente:
+   - contraseñas
+   - tokens
+   - claves de API
+   - credenciales
+5. Para Gmail usar OAuth 2.0.
+6. No usar usuario y contraseña de Gmail.
+7. No usar IMAP con contraseña como primera opción.
+8. Solicitar solo los permisos mínimos necesarios.
+9. No imprimir datos sensibles en consola.
+10. No mostrar contraseñas ni tokens en logs.
+11. Evitar permisos Android innecesarios.
+12. Si algo no puede hacerse de forma segura desde Flutter, indicarlo claramente.
+
+---
+
+## 6. Reglas de arquitectura
+
+Usa arquitectura limpia simplificada.
+
+La estructura debe separar:
+
+- presentación
+- estado
+- dominio
+- datos
+- servicios
+- base local
+- seguridad
+- utilidades
+
+No mezcles lógica de negocio dentro de widgets.
+
+No pongas consultas de base de datos directamente en pantallas.
+
+No pongas cálculos directamente en la UI.
+
+Usa servicios separados para:
+
+- cálculo de horas
+- almacenamiento seguro
+- base de datos local
+- importación de PDF
+- extracción de PDF
+- autenticación Gmail
+- sincronización Gmail
+- generación de hash
+
+---
+
+## 7. Estructura recomendada de carpetas
+
+Mantén una estructura parecida a esta:
+
+```txt
+lib/
+  main.dart
+  app.dart
+
+  core/
+    constants/
+    errors/
+    router/
+    security/
+    theme/
+    utils/
+
+  shared/
+    widgets/
+    layouts/
+
+  features/
+    dashboard/
+      presentation/
+      application/
+      domain/
+      data/
+
+    hours/
+      presentation/
+      application/
+      domain/
+      data/
+
+    payroll/
+      presentation/
+      application/
+      domain/
+      data/
+
+    pdf_reader/
+      presentation/
+      application/
+      domain/
+      data/
+
+    gmail/
+      presentation/
+      application/
+      domain/
+      data/
+
+    settings/
+      presentation/
+      application/
+      domain/
+      data/
+
+  data/
+    local/
+      app_database.dart
+      tables/
+      daos/
+
+  services/
+    secure_storage_service.dart
+    hash_service.dart
