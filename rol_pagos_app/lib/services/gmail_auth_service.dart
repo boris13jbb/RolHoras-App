@@ -22,7 +22,7 @@ class GmailAuthService {
   ];
 
   /// Package de la app Android en `build.gradle.kts` (requerido en Google Cloud).
-  static const String androidPackageName = 'com.example.rol_pagos_app';
+  static const String androidPackageName = 'com.rolhoras.rol_pagos_app';
 
   final GoogleSignIn _googleSignIn;
 

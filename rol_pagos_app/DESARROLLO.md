@@ -106,9 +106,10 @@ Habilitar el inicio de sesión con Gmail (Google Sign-In) sin fallos por configu
 
 ### Decisiones técnicas tomadas
 - Manejar errores de forma segura en `GmailAuthService` para evitar ruido y mantener UI estable.
-- Mantener el `applicationId` actual (`com.example.rol_pagos_app`) hasta que se defina el package final del producto. Si Google Cloud rechaza crear el OAuth Android porque “ya está en uso”, se debe reutilizar el proyecto donde ya existe o cambiar el package a uno propio/único.
+- `applicationId`/`namespace` Android definidos como **`com.rolhoras.rol_pagos_app`** para evitar choques con otros proyectos OAuth (par package + SHA-1 ya usado en otra app/proyecto).
 
 ### Cambios realizados
+- Android: `applicationId`/`namespace` → `com.rolhoras.rol_pagos_app`; `MainActivity.kt` movido al paquete nuevo.
 - `lib/services/gmail_auth_service.dart`
   - Captura robusta de errores en `tryRestoreSession` y `signIn`.
   - Listener único a `authenticationEvents` con `onError` y cancelación en cada `initialize` para evitar duplicación.
@@ -120,6 +121,6 @@ Habilitar el inicio de sesión con Gmail (Google Sign-In) sin fallos por configu
 ### Pendientes
 - Google Cloud Console:
   - Crear/verificar **OAuth Client ID tipo Android** con:
-    - Package: `com.example.rol_pagos_app`
+    - Package: `com.rolhoras.rol_pagos_app`
     - SHA-1 (debug): `1F:A2:55:83:72:66:EC:08:9F:5D:FC:6C:5B:86:2C:98:6E:53:7C:ED`
   - Si aparece “nombre del paquete y huella digital ya están en uso”, localizar el proyecto/cuenta donde ya está registrado y trabajar en ese proyecto (mismo Web Client ID / APIs), o cambiar a un package propio y regenerar credenciales.

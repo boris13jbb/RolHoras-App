@@ -102,7 +102,7 @@ class SettingsScreen extends ConsumerWidget {
                     const SizedBox(height: 12),
                     Text(
                       'En Google Cloud Console crea un cliente OAuth de tipo “Web application” y pega aquí su ID. '
-                      'Añade también el tipo Android con package com.example.rol_pagos_app y el SHA-1 de firma (debug/release). '
+                      'Añade también el tipo Android con package com.rolhoras.rol_pagos_app y el SHA-1 de firma (debug/release). '
                       'Opcional: compilar con dart-define GMAIL_SERVER_CLIENT_ID.',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
