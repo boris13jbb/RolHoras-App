@@ -44,6 +44,10 @@ class AppDatabase extends _$AppDatabase {
       await migrator.createAll();
     },
     onUpgrade: (migrator, from, to) async {},
+    // Tras migraciones y antes del resto de consultas (ver Drift MigrationStrategy.beforeOpen).
+    beforeOpen: (details) async {
+      await userSettingsDao.upsertDefaultsIfMissing();
+    },
   );
 }
 

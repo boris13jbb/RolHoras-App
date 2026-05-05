@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/providers/secure_storage_provider.dart';
+import '../../../core/providers/user_settings_providers.dart';
 import '../../../app.dart';
 import '../../../background/background_tasks.dart';
 import '../../../services/gmail_config_resolver.dart';
@@ -17,6 +18,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final passwordExistsAsync = ref.watch(pdfPasswordExistsProvider);
     final storage = ref.watch(secureStorageServiceProvider);
+    final userSettingsAsync = ref.watch(userSettingsStreamProvider);
 
     return AppScaffold(
       title: 'Configuración',
@@ -261,15 +263,41 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 20),
-          const SectionCard(
-            title: 'Remitente esperado',
+          SectionCard(
+            title: 'Remitente por defecto (base local)',
             subtitle:
-                'Filtro inicial definido para los roles de pago recibidos por correo.',
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.mail_outline),
-              title: Text('XXXXa@vicunha.com.ec'),
-              subtitle: Text('Editable en una fase posterior'),
+                'Valor sembrado en la base de datos. El remitente activo para Gmail lo configuras arriba.',
+            child: userSettingsAsync.when(
+              data: (row) {
+                if (row == null) {
+                  return const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.mail_outline),
+                    title: Text('Sin registro de configuración'),
+                    subtitle: Text(
+                      'Reinicia la app; debería crearse al abrir la base de datos.',
+                    ),
+                  );
+                }
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.mail_outline),
+                  title: Text(row.gmailSenderFilter),
+                  subtitle: const Text(
+                    'Edición de este campo en BD puede añadirse en una fase posterior.',
+                  ),
+                );
+              },
+              loading: () => const ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.mail_outline),
+                title: Text('Cargando…'),
+              ),
+              error: (e, _) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.error_outline),
+                title: Text('Error: $e'),
+              ),
             ),
           ),
         ],
