@@ -113,11 +113,11 @@ class SettingsScreen extends ConsumerWidget {
                     const SizedBox(height: 10),
                     TextFormField(
                       initialValue:
-                          gmailState.senderFilter ??
-                          'galo.tapia@vicunha.com.ec',
+                          gmailState.senderFilter ?? '',
                       decoration: const InputDecoration(
-                        labelText: 'Remitente a buscar',
-                        helperText: 'Ej. galo.tapia@vicunha.com.ec',
+                        labelText: 'Correo del remitente (quien envía el rol)',
+                        helperText:
+                            'Ej. RecursosHumanos.Nomina@vicunha.com.ec',
                         prefixIcon: Icon(Icons.alternate_email),
                       ),
                       onChanged: (v) => controller.setSenderFilter(v),
@@ -268,7 +268,7 @@ class SettingsScreen extends ConsumerWidget {
             child: ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.mail_outline),
-              title: Text('galo.tapia@vicunha.com.ec'),
+              title: Text('XXXXa@vicunha.com.ec'),
               subtitle: Text('Editable en una fase posterior'),
             ),
           ),

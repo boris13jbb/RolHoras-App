@@ -1,3 +1,54 @@
+# EXPEDIENTE TÉCNICO CONSOLIDADO COMPLETO
+# Aplicación RolHoras – Rol de pago PDF, control de horas, pagos, deudas, dashboard y comparación con PDF
+
+**Documento consolidado:** Sí  
+**Archivos integrados:**  
+1. `documento.md`  
+2. `expediente_tecnico_rolhoras.md`  
+
+**Objetivo de este archivo:** Unificar en un solo documento Markdown todo el contenido de los dos documentos proporcionados, conservando la información técnica, funcional, arquitectónica, reglas de negocio, cálculos, pantallas, seguridad, fases de desarrollo, criterios de aceptación y anexos.
+
+---
+
+# ESTADO ACTUAL DEL SISTEMA (alineado al repo) — 2026-04-30
+
+Este expediente fue consolidado a partir de documentos iniciales. A continuación se deja un resumen **alineado al código actual del repositorio** (Flutter), para evitar contradicciones con el contenido histórico del documento.
+
+## Implementado (confirmado en código)
+- **Importación local de PDF** (File Picker) y registro en historial.
+- **Procesamiento de PDF con contraseña**: extracción de texto y parsing de:
+  - horas saldo anterior / adeudadas,
+  - horas compensadas / pagadas,
+  - saldo actual (pendiente o a favor).
+- **Periodo exacto por PDF**: al procesar, se detecta el periodo por texto del rol, con prioridad por rango:
+  - formato observado: **“Del: d/m/yyyy al d/m/yyyy”** (ej. “Del: 1/3/2026 al 31/3/2026”),
+  - fallback por nombre de mes (“marzo 2026”, “mes de marzo del año 2026”).
+- **Historial (UX)**: acciones por rol importado:
+  - **Ver PDF** (abre visor externo del dispositivo),
+  - **Procesar**,
+  - **Eliminar** (borra archivo local + registro).
+- **Gmail (OAuth)**:
+  - Google Sign-In con `gmail.readonly`.
+  - Configurable: **OAuth Web Client ID** y **correo del remitente**.
+  - Sincronización trae **solo PDFs del remitente**: query `from:<remitente> has:attachment filename:pdf`.
+- **Background Android (WorkManager)**:
+  - ejecución periódica (cada ~6h) cuando el usuario lo habilita,
+  - guardrails: si no hay sesión OAuth restaurable sin UI, el background se **omite** y reporta mensaje (no rompe la app).
+
+## Datos técnicos actuales (Android)
+- **Package / applicationId**: `com.rolhoras.rol_pagos_app`
+- **APK debug**: se genera en `build/app/outputs/flutter-apk/app-debug.apk`
+- **Expediente de desarrollo (tracking)**: ver `DESARROLLO.md`
+
+## Notas importantes (para evitar inconsistencias)
+- El documento original menciona remitentes/cuentas de ejemplo. En la app actual el **remitente es configurable** y debe ser el **correo que envía el rol** (p. ej. RRHH/Nómina).
+- La sincronización en background está sujeta a limitaciones de Android; no se garantiza “tiempo real”.
+
+---
+
+# PARTE I  
+# Expediente técnico profesional original
+
 # Expediente técnico profesional  
 ## Aplicación Android en Flutter para lectura de rol de pago PDF, control de saldo de horas y dashboard mensual
 
@@ -48,13 +99,13 @@ La aplicación debe ayudar a:
 | Elemento | Valor |
 |---|---|
 | Cuenta objetivo | `boris13jb@gmail.com` |
-| Remitente esperado | `XXXXX@vicunha.com.ec` |
+| Remitente esperado (ejemplo) | `RecursosHumanos.Nomina@vicunha.com.ec` |
 | Tipo de archivo | PDF adjunto protegido con contraseña |
 | Frecuencia | Mensual |
 | Plataforma inicial | Android |
 | Framework solicitado | Flutter |
 
-> Nota de seguridad: estos datos deben ser configurables dentro de la app. No deben quedar quemados de forma fija en el código fuente final, especialmente si el proyecto se sube a GitHub o se comparte con terceros.
+> Nota: en el código actual, el remitente y el OAuth Web Client ID son configurables desde la app (almacén seguro). Evitar dejar datos sensibles fijos en el repo.
 
 ---
 
@@ -351,11 +402,12 @@ Conviene usar backend si:
 | Criptografía/hash | `crypto` | Hash SHA-256 para evitar duplicados. |
 | Gráficos | `fl_chart` | Barras, progreso e histórico mensual. |
 | Internacionalización/fechas | `intl` | Fechas, meses y formatos en español. |
-| Jobs en Android | `workmanager` | Revisión periódica de correos. |
-| Notificaciones | `flutter_local_notifications` | Aviso cuando llega un nuevo rol de pago. |
-| PDF extracción | `syncfusion_flutter_pdf` o servicio nativo/backend | Validar con PDF real. |
-| OCR futuro | `google_mlkit_text_recognition` | Si el PDF viene como imagen. |
-| Biometría | `local_auth` | Bloqueo con huella/rostro. |
+| Jobs en Android | `workmanager` | Revisión periódica (con guardrails). |
+| PDF extracción | `syncfusion_flutter_pdf` | Extracción de texto de PDFs protegidos. |
+| Abrir PDF (visor externo) | `open_filex` | Abrir el archivo con apps del sistema. |
+| Notificaciones (futuro) | `flutter_local_notifications` | No implementado aún en este repo. |
+| OCR (futuro) | `google_mlkit_text_recognition` | No implementado aún en este repo. |
+| Biometría (futuro) | `local_auth` | No implementado aún en este repo. |
 
 ### 12.2 Dependencias sugeridas en `pubspec.yaml`
 
@@ -364,24 +416,23 @@ dependencies:
   flutter:
     sdk: flutter
 
-  flutter_riverpod: ^2.6.1
-  go_router: ^14.8.0
-  drift: ^2.22.1
-  sqlite3_flutter_libs: ^0.5.28
-  path_provider: ^2.1.5
-  path: ^1.9.0
-  flutter_secure_storage: ^9.2.4
+  crypto: ^3.0.7
+  drift: ^2.32.1
+  file_picker: ^11.0.2
+  fl_chart: ^1.2.0
+  flutter_riverpod: ^3.3.1
+  flutter_secure_storage: ^10.0.0
   google_sign_in: ^7.2.0
-  googleapis: ^16.0.0
-  http: ^1.2.2
-  file_picker: ^8.1.7
-  crypto: ^3.0.6
-  intl: ^0.20.1
-  fl_chart: ^0.69.2
-  workmanager: ^0.5.2
-  flutter_local_notifications: ^18.0.1
-  local_auth: ^2.3.0
-  syncfusion_flutter_pdf: ^28.1.33
+  googleapis: ^13.2.0
+  go_router: ^17.2.2
+  http: ^1.5.0
+  intl: ^0.20.2
+  open_filex: ^4.7.0
+  path: ^1.9.1
+  path_provider: ^2.1.5
+  sqlite3_flutter_libs: ^0.6.0+eol
+  syncfusion_flutter_pdf: ^33.2.3
+  workmanager: ^0.7.0
 
 # En producción, verificar versiones actuales antes de instalar.
 ```
@@ -398,21 +449,17 @@ lib/
 │
 ├── core/
 │   ├── constants/
-│   │   ├── app_constants.dart
-│   │   └── gmail_constants.dart
-│   ├── errors/
-│   │   ├── app_exception.dart
-│   │   └── failure.dart
-│   ├── security/
-│   │   ├── secure_storage_service.dart
-│   │   └── app_lock_service.dart
-│   ├── utils/
-│   │   ├── date_utils.dart
-│   │   ├── hash_utils.dart
-│   │   └── money_hour_formatters.dart
-│   └── theme/
-│       ├── app_theme.dart
-│       └── app_colors.dart
+│   │   └── app_routes.dart
+│   ├── providers/
+│   │   ├── app_database_provider.dart
+│   │   └── secure_storage_provider.dart
+│   ├── router/
+│   │   └── app_router.dart
+│   ├── theme/
+│   │   └── app_theme.dart
+│   └── utils/
+│       ├── crash_logger.dart
+│       └── year_month.dart
 │
 ├── data/
 │   ├── local/
@@ -421,80 +468,38 @@ lib/
 │   │   │   ├── payroll_documents_table.dart
 │   │   │   ├── hour_payments_table.dart
 │   │   │   ├── hour_balances_table.dart
-│   │   │   └── hour_rate_rules_table.dart
+│   │   │   └── user_settings_table.dart
 │   │   └── daos/
-│   │       ├── payroll_dao.dart
-│   │       ├── hour_payment_dao.dart
-│   │       └── dashboard_dao.dart
-│   │
-│   ├── remote/
-│   │   ├── gmail/
-│   │   │   ├── gmail_api_service.dart
-│   │   │   └── gmail_auth_service.dart
-│   │   └── backend/
-│   │       └── optional_backend_service.dart
-│   │
-│   ├── pdf/
-│   │   ├── pdf_extraction_service.dart
-│   │   ├── payroll_pdf_parser.dart
-│   │   └── payroll_regex_templates.dart
-│   │
-│   └── repositories/
-│       ├── payroll_repository_impl.dart
-│       ├── hour_payment_repository_impl.dart
-│       └── settings_repository_impl.dart
+│   │       ├── payroll_documents_dao.dart
+│   │       ├── hour_payments_dao.dart
+│   │       ├── hour_balances_dao.dart
+│   │       └── user_settings_dao.dart
 │
-├── domain/
-│   ├── entities/
-│   │   ├── payroll_document.dart
-│   │   ├── hour_balance.dart
-│   │   ├── hour_payment.dart
-│   │   ├── hour_rate_rule.dart
-│   │   └── user_settings.dart
-│   ├── repositories/
-│   │   ├── payroll_repository.dart
-│   │   ├── hour_payment_repository.dart
-│   │   └── settings_repository.dart
-│   └── usecases/
-│       ├── sync_payroll_emails_usecase.dart
-│       ├── process_payroll_pdf_usecase.dart
-│       ├── register_hour_payment_usecase.dart
-│       ├── calculate_hour_balance_usecase.dart
-│       └── get_dashboard_summary_usecase.dart
+├── services/
+│   ├── gmail_auth_service.dart
+│   ├── gmail_api_service.dart
+│   ├── gmail_config_resolver.dart
+│   ├── gmail_sync_service.dart
+│   ├── hash_service.dart
+│   ├── local_file_service.dart
+│   └── secure_storage_service.dart
 │
-├── presentation/
-│   ├── providers/
-│   │   ├── dashboard_provider.dart
-│   │   ├── payroll_provider.dart
-│   │   ├── settings_provider.dart
-│   │   └── hour_payment_provider.dart
-│   ├── screens/
-│   │   ├── onboarding/
-│   │   │   └── onboarding_screen.dart
-│   │   ├── gmail_setup/
-│   │   │   └── gmail_setup_screen.dart
-│   │   ├── pdf_password/
-│   │   │   └── pdf_password_screen.dart
-│   │   ├── dashboard/
-│   │   │   └── dashboard_screen.dart
-│   │   ├── hour_payment/
-│   │   │   ├── hour_payment_form_screen.dart
-│   │   │   └── hour_payment_list_screen.dart
-│   │   ├── payroll_history/
-│   │   │   ├── payroll_history_screen.dart
-│   │   │   └── payroll_detail_screen.dart
-│   │   └── settings/
-│   │       ├── settings_screen.dart
-│   │       └── rate_rules_screen.dart
+├── shared/
+│   ├── layouts/
+│   │   └── app_scaffold.dart
 │   └── widgets/
-│       ├── summary_card.dart
-│       ├── progress_hours_bar.dart
-│       ├── monthly_history_chart.dart
-│       └── status_badge.dart
+│       └── section_card.dart
 │
 └── background/
-    ├── workmanager_entrypoint.dart
-    └── payroll_sync_task.dart
+    └── background_tasks.dart
+
+features/
+├── dashboard/
+├── gmail/
+├── hours/
+├── payroll/
+├── pdf_reader/
+└── settings/
 ```
 
 ---
@@ -1397,17 +1402,17 @@ class GmailAuthService {
 }
 ```
 
-### Consulta recomendada a Gmail
+### Consulta recomendada a Gmail (alineada a la implementación actual)
 
 ```text
-from:XXXXX@vicunha.com.ec has:attachment filename:pdf newer_than:90d
+from:<remitente_configurado> has:attachment filename:pdf
 ```
 
 En una implementación real, el remitente debe venir desde configuración:
 
 ```dart
 String buildPayrollSearchQuery({required String senderEmail}) {
-  return 'from:$senderEmail has:attachment filename:pdf newer_than:90d';
+  return 'from:$senderEmail has:attachment filename:pdf';
 }
 ```
 
@@ -1688,13 +1693,13 @@ Pasos generales:
 Consulta base:
 
 ```text
-from:XXXXX@vicunha.com.ec has:attachment filename:pdf newer_than:90d
+from:<remitente_configurado> has:attachment filename:pdf
 ```
 
-Consulta más estricta si se conoce asunto:
+Consulta más estricta si se conoce asunto (opcional / futuro):
 
 ```text
-from:XXXXX@vicunha.com.ec subject:(rol OR pago) has:attachment filename:pdf newer_than:90d
+from:<remitente_configurado> subject:(rol OR pago) has:attachment filename:pdf
 ```
 
 ### 30.3 Descarga de adjunto
@@ -2215,3 +2220,1809 @@ La solución más segura y realista para la primera versión es:
 - Backend opcional solo si se requiere automatización casi en tiempo real o procesamiento PDF avanzado.
 
 Con esta arquitectura, el proyecto queda ordenado, seguro y preparado para crecer sin rehacer todo desde cero.
+
+
+---
+
+# PARTE II  
+# Expediente técnico completo RolHoras original
+
+# EXPEDIENTE TÉCNICO COMPLETO  
+# Aplicación RolHoras – Control de horas, pagos, deudas y comparación con PDF
+
+**Nombre del proyecto:** RolHoras  
+**Tipo de sistema:** Aplicación móvil / web administrativa para control de horas  
+**Plataforma sugerida:** Flutter + Firebase  
+**Paquete Android sugerido:** `com.rolhoras.rol_pagos_app`  
+**Versión del documento:** 1.0  
+**Fecha:** 2026-04-30  
+**Estado:** Documento base para desarrollo por fases en Cursor / agente de programación  
+
+---
+
+## 1. Presentación del proyecto
+
+RolHoras es una aplicación diseñada para controlar, registrar, comparar y auditar saldos de horas de una persona o trabajador, tomando como base la información oficial contenida en documentos PDF y los registros ingresados manualmente por el usuario.
+
+El sistema permitirá que el usuario cargue un PDF con información de horas, extraiga automáticamente los valores principales del documento y los compare con los datos registrados dentro de la aplicación, como horas pagadas, horas compensadas, horas adeudadas y ajustes manuales.
+
+El objetivo principal es evitar errores en el control de horas, mantener un historial claro de movimientos y permitir que el usuario sepa en todo momento cuánto debe, cuánto ha pagado o compensado y si los datos coinciden con el documento oficial cargado.
+
+---
+
+## 2. Justificación
+
+Actualmente, el control de horas puede generar confusión cuando se lleva de forma manual, especialmente si existen saldos negativos, pagos parciales, horas compensadas, deudas acumuladas o documentos PDF que contienen información oficial.
+
+Por esta razón, la aplicación RolHoras debe funcionar como una herramienta de control y validación, permitiendo comparar tres fuentes de información:
+
+1. Datos extraídos del PDF.
+2. Datos ingresados manualmente por el usuario.
+3. Historial interno de movimientos de horas.
+
+De esta manera, el sistema ayudará a verificar si el saldo mostrado en el PDF coincide con los registros internos y permitirá detectar diferencias, inconsistencias o valores pendientes de revisión.
+
+---
+
+## 3. Objetivo general
+
+Desarrollar una aplicación que permita registrar, calcular, comparar y auditar horas pagadas, compensadas y adeudadas, utilizando como respaldo la extracción automática de datos desde documentos PDF y la información ingresada por el usuario.
+
+---
+
+## 4. Objetivos específicos
+
+- Permitir el inicio de sesión seguro de usuarios.
+- Permitir la carga de documentos PDF de respaldo.
+- Extraer automáticamente valores de horas desde el PDF.
+- Mostrar en el dashboard los valores extraídos del PDF.
+- Permitir registrar manualmente horas pagadas.
+- Permitir registrar manualmente horas que el usuario debe.
+- Calcular automáticamente el saldo interno de horas.
+- Comparar el saldo calculado con el saldo actual extraído del PDF.
+- Mostrar alertas visuales cuando existan diferencias.
+- Guardar historial completo de movimientos.
+- Generar reportes de control y auditoría.
+- Mantener seguridad por roles y permisos.
+- Permitir que el sistema sea escalable para más usuarios o trabajadores.
+
+---
+
+## 5. Alcance del sistema
+
+### 5.1 Alcance funcional
+
+El sistema debe permitir:
+
+- Registro e inicio de sesión de usuarios.
+- Gestión de perfil de usuario.
+- Carga de documentos PDF.
+- Extracción automática de información desde PDF.
+- Registro de horas pagadas.
+- Registro de horas que debe.
+- Registro de horas compensadas.
+- Registro de ajustes manuales.
+- Visualización de resumen en dashboard.
+- Comparación entre saldo PDF y saldo calculado.
+- Historial de movimientos.
+- Reportes filtrados por fecha.
+- Exportación de información.
+- Auditoría básica de acciones.
+
+### 5.2 Alcance técnico
+
+El proyecto puede desarrollarse con:
+
+- Flutter para la aplicación.
+- Firebase Authentication para login.
+- Cloud Firestore para base de datos.
+- Firebase Storage para guardar PDF.
+- Cloud Functions o backend auxiliar para extracción avanzada de PDF, si se requiere.
+- OCR opcional en caso de que el PDF no tenga texto seleccionable.
+
+### 5.3 Fuera del alcance inicial
+
+En la primera versión no se recomienda incluir:
+
+- Nómina completa.
+- Facturación electrónica.
+- Firma electrónica.
+- Integración bancaria.
+- Inteligencia artificial avanzada.
+- Reconocimiento complejo de documentos con múltiples formatos.
+
+Estas funciones pueden planificarse para fases posteriores.
+
+---
+
+## 6. Usuarios y roles
+
+### 6.1 Usuario administrador
+
+Tiene acceso completo al sistema.
+
+Funciones permitidas:
+
+- Crear usuarios.
+- Editar usuarios.
+- Cargar PDF.
+- Registrar horas.
+- Registrar deudas.
+- Registrar pagos.
+- Ver todos los movimientos.
+- Generar reportes.
+- Revisar diferencias.
+- Anular movimientos mediante ajustes.
+- Acceder a auditoría.
+
+### 6.2 Usuario operador
+
+Puede registrar información operativa.
+
+Funciones permitidas:
+
+- Cargar PDF.
+- Registrar horas pagadas.
+- Registrar horas que debe.
+- Consultar dashboard.
+- Ver historial propio.
+- Generar reportes básicos.
+
+### 6.3 Usuario consulta
+
+Solo puede visualizar información.
+
+Funciones permitidas:
+
+- Ver dashboard.
+- Ver historial.
+- Descargar reportes autorizados.
+
+---
+
+## 7. Módulos principales del sistema
+
+1. Módulo de autenticación.
+2. Módulo de dashboard.
+3. Módulo de carga y lectura de PDF.
+4. Módulo de extracción de datos del PDF.
+5. Módulo de registro de horas pagadas.
+6. Módulo de registro de horas que debe.
+7. Módulo de cálculo de saldo.
+8. Módulo de comparación y conciliación.
+9. Módulo de historial de movimientos.
+10. Módulo de reportes.
+11. Módulo de configuración.
+12. Módulo de auditoría.
+13. Módulo de seguridad y permisos.
+
+---
+
+# 8. Módulo de autenticación
+
+## 8.1 Descripción
+
+El sistema debe contar con un inicio de sesión seguro para identificar al usuario que registra, modifica o consulta la información.
+
+## 8.2 Funciones requeridas
+
+- Inicio de sesión con correo y contraseña.
+- Inicio de sesión con Google, si se mantiene en el proyecto.
+- Cierre de sesión.
+- Recuperación de contraseña.
+- Validación de usuario activo.
+- Restricción de acceso según rol.
+
+## 8.3 Consideraciones para Google Sign-In
+
+Si se usa Google Sign-In en Android, se debe configurar correctamente el cliente OAuth Android en Google Cloud o Firebase.
+
+Datos importantes:
+
+```text
+Package name:
+com.rolhoras.rol_pagos_app
+
+SHA-1:
+Debe corresponder a la clave usada para compilar la app.
+```
+
+Se debe crear un cliente OAuth Android con:
+
+- Nombre del paquete correcto.
+- SHA-1 correcto.
+- Proyecto de Google Cloud correcto.
+- Firebase conectado al mismo proyecto.
+
+---
+
+# 9. Módulo de dashboard principal
+
+## 9.1 Descripción general
+
+El dashboard será la pantalla principal del sistema. Debe mostrar de forma clara el estado actual de las horas, los valores extraídos desde el PDF, los valores ingresados manualmente por el usuario y el resultado de la comparación.
+
+El dashboard no debe ser únicamente visual. Debe funcionar como un panel de control y auditoría.
+
+## 9.2 Información que debe mostrar el dashboard
+
+El dashboard debe mostrar:
+
+| Elemento | Descripción |
+|---|---|
+| Saldo anterior PDF | Valor extraído del documento PDF |
+| Horas compensadas PDF | Valor extraído del documento PDF |
+| Saldo actual PDF | Valor extraído del documento PDF |
+| Horas pagadas por el usuario | Total de horas ingresadas manualmente como pagadas |
+| Horas que debe el usuario | Total de horas registradas como deuda |
+| Ajustes manuales | Correcciones autorizadas |
+| Saldo calculado por el sistema | Resultado según los movimientos internos |
+| Diferencia | Diferencia entre PDF y sistema |
+| Estado de conciliación | Coincide, No coincide o Requiere revisión |
+| Último PDF cargado | Nombre y fecha del documento |
+| Último movimiento | Último registro realizado |
+
+## 9.3 Tarjetas sugeridas para el dashboard
+
+El dashboard debe incluir tarjetas o cuadros resumen:
+
+| Tarjeta | Contenido |
+|---|---|
+| Saldo anterior PDF | Muestra el saldo anterior leído del PDF |
+| Horas compensadas PDF | Muestra las horas compensadas leídas del PDF |
+| Saldo actual PDF | Muestra el saldo actual leído del PDF |
+| Horas pagadas | Suma de horas pagadas registradas |
+| Horas que debe | Suma de horas adeudadas registradas |
+| Saldo interno | Saldo calculado por la aplicación |
+| Diferencia | Diferencia entre saldo PDF y saldo interno |
+| Estado | Resultado de la comparación |
+
+## 9.4 Estados visuales
+
+| Estado | Condición | Color sugerido |
+|---|---|---|
+| Coincide | La diferencia es 0.00 o está dentro de la tolerancia permitida | Verde |
+| No coincide | Existe diferencia entre PDF y sistema | Rojo |
+| Requiere revisión | Falta información o el PDF no pudo leerse correctamente | Amarillo |
+| Sin PDF | Aún no se ha cargado ningún documento | Gris |
+| Pendiente | Existen registros no conciliados | Naranja |
+
+---
+
+# 10. Módulo de carga y extracción de PDF
+
+## 10.1 Descripción
+
+El usuario podrá cargar un archivo PDF que contenga información oficial sobre el saldo de horas. El sistema deberá leer el documento y extraer automáticamente los valores principales.
+
+## 10.2 Datos que debe extraer del PDF
+
+El sistema debe extraer como mínimo los siguientes datos:
+
+| Campo extraído | Descripción |
+|---|---|
+| Notas horas | Encabezado o sección donde se encuentra la información |
+| Horas saldo anterior | Saldo acumulado antes del último movimiento |
+| Horas compensadas | Horas que fueron compensadas o descontadas |
+| Saldo actual | Saldo vigente mostrado en el PDF |
+
+## 10.3 Ejemplo de datos extraídos
+
+Ejemplo basado en el PDF o imagen de referencia:
+
+| Campo | Valor |
+|---|---:|
+| Horas saldo anterior | -496.45 |
+| Horas compensadas | 128.16 |
+| Saldo actual | -368.29 |
+
+## 10.4 Reglas de extracción
+
+El sistema debe:
+
+- Leer texto del PDF cuando el documento tenga texto seleccionable.
+- Usar OCR solo si el PDF es una imagen escaneada.
+- Reconocer números positivos y negativos.
+- Reconocer valores con decimales.
+- Conservar el signo negativo cuando exista.
+- Conservar los decimales tal como aparecen en el documento.
+- Asociar cada valor con su etiqueta correcta.
+- Validar que el valor extraído sea numérico.
+- Guardar el texto crudo extraído para auditoría.
+- Permitir corrección manual si la extracción falla.
+
+## 10.5 Etiquetas esperadas en el PDF
+
+El sistema debe buscar etiquetas similares a:
+
+```text
+NOTAS HORAS
+HORAS SALDO ANTERIOR
+HORAS COMPENSADAS
+SALDO ACTUAL
+```
+
+También debe considerar variaciones como:
+
+```text
+Saldo anterior
+Horas saldo anterior
+Horas compensadas
+Saldo actual
+Total actual
+```
+
+## 10.6 Validaciones del PDF
+
+El sistema debe validar:
+
+| Validación | Resultado esperado |
+|---|---|
+| El archivo debe ser PDF | Si no lo es, rechazar |
+| El PDF debe pesar menos del límite definido | Si supera el límite, mostrar error |
+| El PDF debe tener texto o imagen legible | Si no, marcar como requiere revisión |
+| Debe encontrar al menos saldo actual | Si no lo encuentra, no confirmar extracción |
+| Los valores deben ser numéricos | Si no, pedir revisión manual |
+| No debe sobrescribir un PDF anterior sin confirmación | Debe crear un nuevo registro |
+
+## 10.7 Confirmación posterior a la extracción
+
+Después de extraer la información, el sistema debe mostrar una pantalla de revisión con:
+
+| Campo | Valor extraído | Acción |
+|---|---:|---|
+| Horas saldo anterior | -496.45 | Confirmar / editar |
+| Horas compensadas | 128.16 | Confirmar / editar |
+| Saldo actual | -368.29 | Confirmar / editar |
+
+El usuario debe confirmar antes de guardar definitivamente.
+
+---
+
+# 11. Módulo de registro de horas pagadas
+
+## 11.1 Descripción
+
+El sistema debe permitir que el usuario registre las horas que va pagando o compensando manualmente.
+
+## 11.2 Campos requeridos
+
+| Campo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| Fecha | Fecha | Sí | Día en que se registra el pago |
+| Cantidad de horas | Decimal | Sí | Horas pagadas |
+| Motivo | Texto | No | Motivo del pago |
+| Observación | Texto | No | Comentario adicional |
+| Documento relacionado | Archivo / referencia | No | PDF o respaldo asociado |
+| Usuario que registra | Automático | Sí | Usuario autenticado |
+
+## 11.3 Reglas de negocio
+
+- Las horas pagadas aumentan el saldo cuando el saldo es negativo.
+- No se deben aceptar valores vacíos.
+- No se deben aceptar valores con texto no numérico.
+- Se debe permitir decimales.
+- Se debe guardar la fecha y el usuario que registró.
+- No se debe eliminar físicamente un pago; debe anularse mediante un ajuste.
+
+---
+
+# 12. Módulo de registro de horas que debe
+
+## 12.1 Descripción
+
+El sistema debe permitir ingresar horas que el usuario todavía debe. Estas horas deben afectar el saldo calculado y mostrarse en el dashboard.
+
+## 12.2 Campos requeridos
+
+| Campo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| Fecha | Fecha | Sí | Fecha del registro |
+| Cantidad de horas | Decimal | Sí | Horas que debe |
+| Motivo | Texto | Sí | Razón de la deuda |
+| Observación | Texto | No | Comentario adicional |
+| Usuario que registra | Automático | Sí | Usuario autenticado |
+| Estado | Lista | Sí | Pendiente, compensado o anulado |
+
+## 12.3 Reglas de negocio
+
+- Las horas que debe reducen el saldo o aumentan la deuda.
+- Si el saldo está en negativo, una nueva deuda lo vuelve más negativo.
+- Debe visualizarse en el dashboard.
+- Debe quedar guardado en historial.
+- No debe borrarse físicamente.
+- Si se corrige, se debe registrar un ajuste.
+
+---
+
+# 13. Módulo de cálculo de saldo
+
+## 13.1 Concepto de saldo
+
+El saldo representa la diferencia actual entre horas adeudadas y horas compensadas.
+
+Convención sugerida:
+
+| Valor | Interpretación |
+|---|---|
+| Saldo negativo | El usuario debe horas |
+| Saldo positivo | El usuario tiene horas a favor |
+| Saldo cero | No existe deuda ni saldo a favor |
+
+## 13.2 Fórmula base desde PDF
+
+Con los datos del ejemplo:
+
+```text
+Saldo actual PDF = Horas saldo anterior + Horas compensadas
+```
+
+Ejemplo:
+
+```text
+-368.29 = -496.45 + 128.16
+```
+
+## 13.3 Fórmula de control interno
+
+El sistema debe calcular el saldo interno considerando el PDF y los registros manuales.
+
+```text
+Saldo calculado =
+Horas saldo anterior PDF
++ Horas compensadas PDF
++ Total horas pagadas manualmente
+- Total horas que debe manualmente
++ Ajustes positivos
+- Ajustes negativos
+```
+
+## 13.4 Fórmula de comparación
+
+```text
+Diferencia =
+Saldo actual PDF - Saldo calculado por el sistema
+```
+
+## 13.5 Ejemplo correcto
+
+```text
+Horas saldo anterior PDF: -496.45
+Horas compensadas PDF: 128.16
+Horas pagadas manualmente: 0.00
+Horas que debe manualmente: 0.00
+
+Saldo calculado: -368.29
+Saldo actual PDF: -368.29
+Diferencia: 0.00
+Estado: Coincide
+```
+
+## 13.6 Ejemplo con deuda manual
+
+```text
+Horas saldo anterior PDF: -496.45
+Horas compensadas PDF: 128.16
+Horas pagadas manualmente: 0.00
+Horas que debe manualmente: 10.00
+
+Saldo calculado: -378.29
+Saldo actual PDF: -368.29
+Diferencia: 10.00
+Estado: No coincide
+```
+
+## 13.7 Ejemplo con pago manual
+
+```text
+Horas saldo anterior PDF: -496.45
+Horas compensadas PDF: 128.16
+Horas pagadas manualmente: 20.00
+Horas que debe manualmente: 0.00
+
+Saldo calculado: -348.29
+Saldo actual PDF: -368.29
+Diferencia: -20.00
+Estado: No coincide
+```
+
+## 13.8 Tolerancia de comparación
+
+Se recomienda una tolerancia configurable.
+
+| Diferencia absoluta | Estado |
+|---:|---|
+| 0.00 | Coincide |
+| 0.01 o menos | Coincide con tolerancia |
+| Mayor a 0.01 | No coincide |
+
+---
+
+# 14. Módulo de comparación y conciliación
+
+## 14.1 Descripción
+
+La conciliación consiste en comparar los datos oficiales del PDF con los movimientos registrados dentro del sistema.
+
+## 14.2 Resultado de conciliación
+
+El sistema debe generar un resultado como:
+
+| Elemento | Valor |
+|---|---:|
+| Saldo actual PDF | -368.29 |
+| Saldo calculado sistema | -368.29 |
+| Diferencia | 0.00 |
+| Estado | Coincide |
+
+## 14.3 Alertas
+
+El sistema debe mostrar alertas cuando:
+
+- El saldo del PDF no coincide con el saldo interno.
+- El PDF no pudo leerse.
+- Faltan datos obligatorios.
+- Existen movimientos pendientes.
+- Existen registros manuales sin documento de respaldo.
+- La diferencia supera la tolerancia.
+- El saldo cambia de negativo a positivo o de positivo a negativo.
+
+## 14.4 Acciones de conciliación
+
+Cuando exista diferencia, el sistema debe permitir:
+
+- Revisar PDF cargado.
+- Revisar valores extraídos.
+- Revisar historial de pagos.
+- Revisar historial de deudas.
+- Registrar ajuste.
+- Marcar como revisado.
+- Agregar observación de conciliación.
+
+---
+
+# 15. Módulo de historial de movimientos
+
+## 15.1 Descripción
+
+Todo cambio relacionado con horas debe quedar registrado en un historial.
+
+## 15.2 Tipos de movimientos
+
+| Tipo | Descripción |
+|---|---|
+| CARGA_PDF | Registro generado al cargar un PDF |
+| EXTRACCION_PDF | Registro de datos extraídos del PDF |
+| PAGO_HORAS | Registro de horas pagadas |
+| DEUDA_HORAS | Registro de horas que debe |
+| COMPENSACION | Registro de compensación |
+| AJUSTE_POSITIVO | Corrección que aumenta saldo |
+| AJUSTE_NEGATIVO | Corrección que reduce saldo |
+| ANULACION | Anulación lógica de un movimiento |
+| CONCILIACION | Resultado de comparación PDF vs sistema |
+
+## 15.3 Campos del historial
+
+| Campo | Descripción |
+|---|---|
+| ID | Identificador único |
+| Fecha | Fecha y hora del movimiento |
+| Tipo de movimiento | Pago, deuda, ajuste, PDF, conciliación |
+| Horas | Cantidad registrada |
+| Saldo anterior | Saldo antes del movimiento |
+| Saldo nuevo | Saldo después del movimiento |
+| Usuario | Usuario que registró |
+| Observación | Comentario |
+| Documento asociado | PDF o respaldo |
+| Estado | Activo, anulado o revisado |
+
+## 15.4 Reglas del historial
+
+- No se debe eliminar físicamente ningún movimiento.
+- Toda corrección debe registrarse como ajuste.
+- Debe poder filtrarse por fecha.
+- Debe poder filtrarse por tipo.
+- Debe poder exportarse.
+- Debe mostrar quién realizó cada acción.
+
+---
+
+# 16. Módulo de reportes
+
+## 16.1 Reportes requeridos
+
+El sistema debe generar reportes de:
+
+- Saldo actual.
+- Historial de pagos.
+- Historial de horas que debe.
+- Historial de PDF cargados.
+- Diferencias detectadas.
+- Conciliaciones realizadas.
+- Reporte mensual.
+- Reporte por usuario.
+- Reporte por rango de fechas.
+
+## 16.2 Formatos sugeridos
+
+- PDF.
+- Excel.
+- CSV.
+
+## 16.3 Contenido mínimo del reporte
+
+| Campo | Descripción |
+|---|---|
+| Nombre del usuario | Persona asociada al control |
+| Fecha de generación | Fecha del reporte |
+| Saldo anterior | Saldo inicial |
+| Total compensado | Horas compensadas |
+| Total pagado | Horas pagadas |
+| Total adeudado | Horas que debe |
+| Saldo actual | Saldo final |
+| Diferencia | Diferencia con PDF |
+| Estado | Resultado de conciliación |
+| Observaciones | Comentarios registrados |
+
+---
+
+# 17. Módulo de configuración
+
+## 17.1 Configuraciones requeridas
+
+El sistema debe permitir configurar:
+
+| Parámetro | Descripción |
+|---|---|
+| Tolerancia de diferencia | Valor máximo permitido para considerar coincidencia |
+| Decimales | Cantidad de decimales a mostrar |
+| Límite de PDF | Tamaño máximo permitido |
+| Formato de fecha | Formato usado en reportes |
+| Nombre de institución o empresa | Para reportes |
+| Logo | Para reportes PDF |
+| Roles | Permisos de acceso |
+| Estados | Estados de conciliación |
+
+---
+
+# 18. Arquitectura técnica sugerida
+
+## 18.1 Frontend
+
+Tecnología sugerida:
+
+```text
+Flutter
+```
+
+La app debe organizarse por módulos o features.
+
+Estructura sugerida:
+
+```text
+lib/
+  core/
+    constants/
+    errors/
+    utils/
+    widgets/
+    theme/
+  features/
+    auth/
+      data/
+      domain/
+      presentation/
+    dashboard/
+      data/
+      domain/
+      presentation/
+    pdf_hours/
+      data/
+      domain/
+      presentation/
+    hour_movements/
+      data/
+      domain/
+      presentation/
+    reports/
+      data/
+      domain/
+      presentation/
+    settings/
+      data/
+      domain/
+      presentation/
+  services/
+    firebase_service.dart
+    pdf_extraction_service.dart
+    hour_calculation_service.dart
+    audit_service.dart
+  main.dart
+```
+
+## 18.2 Backend / Base de datos
+
+Opción sugerida:
+
+```text
+Firebase
+```
+
+Servicios:
+
+- Firebase Auth.
+- Firestore.
+- Firebase Storage.
+- Cloud Functions opcional.
+
+## 18.3 Almacenamiento de archivos
+
+Los PDF cargados deben guardarse en Firebase Storage o almacenamiento seguro equivalente.
+
+Ruta sugerida:
+
+```text
+pdf_hours/{userId}/{year}/{documentId}.pdf
+```
+
+## 18.4 Procesamiento del PDF
+
+Opciones:
+
+1. Procesamiento dentro de Flutter si el PDF tiene texto.
+2. Procesamiento mediante backend si se requiere OCR.
+3. Procesamiento mediante Cloud Functions para mayor seguridad.
+
+---
+
+# 19. Modelo de datos sugerido en Firestore
+
+## 19.1 Colección users
+
+```json
+{
+  "uid": "string",
+  "displayName": "string",
+  "email": "string",
+  "role": "admin | operator | viewer",
+  "active": true,
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp"
+}
+```
+
+## 19.2 Colección hour_documents
+
+```json
+{
+  "id": "string",
+  "userId": "string",
+  "fileName": "reporte_horas.pdf",
+  "fileUrl": "string",
+  "storagePath": "string",
+  "uploadedAt": "timestamp",
+  "uploadedBy": "uid",
+  "rawText": "string",
+  "extractionStatus": "success | partial | failed | manual_review",
+  "previousBalance": -496.45,
+  "compensatedHours": 128.16,
+  "currentBalance": -368.29,
+  "extractionConfidence": 0.95,
+  "confirmed": true,
+  "confirmedAt": "timestamp",
+  "confirmedBy": "uid"
+}
+```
+
+## 19.3 Colección hour_movements
+
+```json
+{
+  "id": "string",
+  "userId": "string",
+  "type": "PAGO_HORAS | DEUDA_HORAS | AJUSTE_POSITIVO | AJUSTE_NEGATIVO | COMPENSACION",
+  "hours": 10.00,
+  "date": "timestamp",
+  "reason": "string",
+  "observation": "string",
+  "relatedDocumentId": "string",
+  "createdAt": "timestamp",
+  "createdBy": "uid",
+  "status": "active | cancelled",
+  "cancelReason": "string",
+  "cancelledAt": "timestamp",
+  "cancelledBy": "uid"
+}
+```
+
+## 19.4 Colección hour_balances
+
+```json
+{
+  "userId": "string",
+  "lastDocumentId": "string",
+  "pdfPreviousBalance": -496.45,
+  "pdfCompensatedHours": 128.16,
+  "pdfCurrentBalance": -368.29,
+  "manualPaidHours": 0.00,
+  "manualDebtHours": 0.00,
+  "positiveAdjustments": 0.00,
+  "negativeAdjustments": 0.00,
+  "systemCalculatedBalance": -368.29,
+  "difference": 0.00,
+  "status": "coincide | no_coincide | requiere_revision | sin_pdf",
+  "updatedAt": "timestamp"
+}
+```
+
+## 19.5 Colección audit_logs
+
+```json
+{
+  "id": "string",
+  "userId": "string",
+  "action": "string",
+  "entity": "string",
+  "entityId": "string",
+  "oldValue": {},
+  "newValue": {},
+  "createdAt": "timestamp",
+  "createdBy": "uid",
+  "deviceInfo": "string"
+}
+```
+
+---
+
+# 20. Reglas de seguridad
+
+## 20.1 Reglas generales
+
+- Solo usuarios autenticados pueden ingresar.
+- Cada usuario solo debe acceder a su información, salvo administrador.
+- Los PDF deben estar protegidos.
+- Los movimientos no deben eliminarse físicamente.
+- Los ajustes deben quedar auditados.
+- Los roles deben validarse en frontend y base de datos.
+
+## 20.2 Roles
+
+| Acción | Admin | Operador | Consulta |
+|---|---|---|---|
+| Ver dashboard | Sí | Sí | Sí |
+| Cargar PDF | Sí | Sí | No |
+| Registrar pagos | Sí | Sí | No |
+| Registrar deuda | Sí | Sí | No |
+| Crear usuarios | Sí | No | No |
+| Anular movimientos | Sí | No | No |
+| Exportar reportes | Sí | Sí | Sí |
+| Ver auditoría | Sí | No | No |
+
+---
+
+# 21. Diseño visual sugerido
+
+## 21.1 Estilo general
+
+El diseño debe ser:
+
+- Limpio.
+- Profesional.
+- Fácil de leer.
+- Con tarjetas de resumen.
+- Con colores por estado.
+- Adaptado para celular.
+- Con posibilidad de adaptarse a web o escritorio.
+
+## 21.2 Pantallas requeridas
+
+1. Login.
+2. Recuperar contraseña.
+3. Dashboard.
+4. Cargar PDF.
+5. Confirmar datos extraídos.
+6. Registrar horas pagadas.
+7. Registrar horas que debe.
+8. Historial de movimientos.
+9. Detalle de movimiento.
+10. Reportes.
+11. Configuración.
+12. Administración de usuarios.
+
+## 21.3 Dashboard visual sugerido
+
+El dashboard debe tener:
+
+```text
+[Saldo actual PDF]       [Saldo calculado]
+[Horas compensadas]      [Horas pagadas]
+[Horas que debe]         [Diferencia]
+[Estado de conciliación]
+[Último PDF cargado]
+[Últimos movimientos]
+```
+
+---
+
+# 22. Flujos principales del sistema
+
+## 22.1 Flujo de carga de PDF
+
+1. El usuario inicia sesión.
+2. Ingresa al dashboard.
+3. Selecciona “Cargar PDF”.
+4. Elige un archivo PDF.
+5. El sistema valida el archivo.
+6. El sistema extrae los datos.
+7. El sistema muestra una pantalla de confirmación.
+8. El usuario confirma o corrige los valores.
+9. El sistema guarda el PDF.
+10. El sistema actualiza el dashboard.
+11. El sistema registra el movimiento en historial.
+
+## 22.2 Flujo de registro de horas pagadas
+
+1. El usuario ingresa al dashboard.
+2. Selecciona “Registrar pago”.
+3. Ingresa fecha, horas y observación.
+4. El sistema valida los datos.
+5. El sistema guarda el movimiento.
+6. El sistema recalcula el saldo.
+7. El dashboard se actualiza.
+8. El historial registra el movimiento.
+
+## 22.3 Flujo de registro de horas que debe
+
+1. El usuario ingresa al dashboard.
+2. Selecciona “Registrar deuda”.
+3. Ingresa fecha, cantidad de horas, motivo y observación.
+4. El sistema valida los datos.
+5. El sistema guarda el movimiento.
+6. El sistema recalcula el saldo.
+7. El dashboard muestra la nueva deuda.
+8. El historial registra el movimiento.
+
+## 22.4 Flujo de conciliación
+
+1. El sistema toma el último PDF confirmado.
+2. Suma los movimientos manuales.
+3. Calcula el saldo interno.
+4. Compara con el saldo actual del PDF.
+5. Calcula la diferencia.
+6. Determina el estado.
+7. Muestra el resultado en el dashboard.
+8. Guarda el resultado de conciliación.
+
+---
+
+# 23. Validaciones obligatorias
+
+## 23.1 Validaciones de campos numéricos
+
+- No permitir letras.
+- No permitir campos vacíos.
+- Permitir decimales.
+- Permitir valores negativos solo cuando corresponda.
+- Normalizar separador decimal.
+- Evitar valores duplicados accidentales.
+
+## 23.2 Validaciones de fecha
+
+- La fecha no puede estar vacía.
+- La fecha no debe ser futura, salvo configuración especial.
+- Debe permitir filtrar por rango.
+
+## 23.3 Validaciones de PDF
+
+- Debe ser PDF.
+- Debe tener tamaño permitido.
+- Debe poder leerse.
+- Debe contener al menos un valor de saldo.
+- Debe guardarse con referencia al usuario.
+
+## 23.4 Validaciones de movimientos
+
+- Todo movimiento debe tener usuario creador.
+- Todo movimiento debe tener fecha.
+- Todo movimiento debe tener tipo.
+- Todo movimiento debe afectar el saldo según su tipo.
+- Las anulaciones no eliminan el registro original.
+
+---
+
+# 24. Manejo de errores
+
+## 24.1 Errores posibles
+
+| Error | Mensaje sugerido |
+|---|---|
+| PDF inválido | El archivo seleccionado no es un PDF válido |
+| PDF no legible | No se pudo leer la información del documento |
+| Dato no encontrado | No se encontró el campo solicitado en el PDF |
+| Valor inválido | El valor ingresado no es numérico |
+| Sin conexión | No se pudo conectar con el servidor |
+| Permiso denegado | No tiene permisos para realizar esta acción |
+| Error de login | Credenciales incorrectas |
+| Diferencia detectada | El saldo del PDF no coincide con el saldo calculado |
+
+## 24.2 Reglas de mensajes
+
+Los mensajes deben ser claros y útiles.
+
+Ejemplo incorrecto:
+
+```text
+Error 500
+```
+
+Ejemplo correcto:
+
+```text
+No se pudo guardar el registro de horas. Revise su conexión e inténtelo nuevamente.
+```
+
+---
+
+# 25. Criterios de aceptación general
+
+| N.º | Criterio |
+|---:|---|
+| 1 | El usuario puede iniciar sesión correctamente |
+| 2 | El dashboard muestra información clara |
+| 3 | El usuario puede cargar un PDF |
+| 4 | El sistema extrae saldo anterior, horas compensadas y saldo actual |
+| 5 | El usuario puede confirmar o corregir los datos extraídos |
+| 6 | El sistema guarda el PDF como respaldo |
+| 7 | El usuario puede registrar horas pagadas |
+| 8 | El usuario puede registrar horas que debe |
+| 9 | El sistema calcula el saldo interno |
+| 10 | El sistema compara saldo PDF vs saldo interno |
+| 11 | El dashboard muestra diferencia y estado |
+| 12 | El historial registra todos los movimientos |
+| 13 | Los movimientos no se eliminan físicamente |
+| 14 | El sistema permite reportes básicos |
+| 15 | Los permisos funcionan según rol |
+| 16 | La aplicación funciona correctamente en Android |
+| 17 | La información se mantiene segura |
+| 18 | Los errores muestran mensajes comprensibles |
+| 19 | Se puede probar cada módulo por separado |
+| 20 | Cada fase terminada incluye guía de prueba |
+
+---
+
+# 26. Plan de desarrollo por fases
+
+## Fase 1: Base del proyecto
+
+### Objetivo
+
+Crear la estructura inicial del proyecto Flutter.
+
+### Tareas
+
+- Crear proyecto Flutter.
+- Configurar nombre de app.
+- Configurar paquete Android.
+- Crear estructura de carpetas.
+- Configurar tema.
+- Crear navegación base.
+- Crear pantalla inicial.
+
+### Resultado esperado
+
+La aplicación debe abrir correctamente y mostrar una pantalla inicial.
+
+### Estado obligatorio al finalizar
+
+```text
+## Estado
+Listo para probar
+
+## Qué se puede probar
+La aplicación inicia correctamente y muestra la pantalla inicial.
+
+## Cómo probar
+Ejecutar flutter run y verificar que la app abre sin errores.
+```
+
+---
+
+## Fase 2: Autenticación
+
+### Objetivo
+
+Implementar login y control de sesión.
+
+### Tareas
+
+- Configurar Firebase.
+- Agregar Firebase Auth.
+- Crear pantalla de login.
+- Crear recuperación de contraseña.
+- Crear cierre de sesión.
+- Proteger rutas.
+
+### Resultado esperado
+
+El usuario puede iniciar y cerrar sesión.
+
+---
+
+## Fase 3: Dashboard inicial
+
+### Objetivo
+
+Crear el dashboard principal con tarjetas vacías o datos simulados.
+
+### Tareas
+
+- Crear pantalla dashboard.
+- Crear tarjetas de saldo.
+- Crear tarjetas de horas pagadas.
+- Crear tarjetas de horas que debe.
+- Crear tarjeta de estado.
+- Crear sección de últimos movimientos.
+
+### Resultado esperado
+
+El dashboard se visualiza correctamente.
+
+---
+
+## Fase 4: Carga de PDF
+
+### Objetivo
+
+Permitir seleccionar y subir documentos PDF.
+
+### Tareas
+
+- Agregar selector de archivos.
+- Validar PDF.
+- Subir PDF a Storage.
+- Guardar referencia en Firestore.
+- Mostrar último PDF cargado.
+
+### Resultado esperado
+
+El usuario puede cargar un PDF y verlo registrado.
+
+---
+
+## Fase 5: Extracción de datos del PDF
+
+### Objetivo
+
+Extraer automáticamente los valores de horas desde el PDF.
+
+### Tareas
+
+- Leer texto del PDF.
+- Buscar etiquetas.
+- Extraer valores numéricos.
+- Validar valores.
+- Mostrar pantalla de confirmación.
+- Guardar valores confirmados.
+
+### Resultado esperado
+
+El sistema extrae:
+
+- Horas saldo anterior.
+- Horas compensadas.
+- Saldo actual.
+
+---
+
+## Fase 6: Registro de horas pagadas
+
+### Objetivo
+
+Permitir registrar pagos o compensaciones manuales.
+
+### Tareas
+
+- Crear formulario.
+- Validar horas.
+- Guardar movimiento.
+- Actualizar dashboard.
+- Registrar historial.
+
+### Resultado esperado
+
+El usuario puede ingresar horas pagadas y el saldo se actualiza.
+
+---
+
+## Fase 7: Registro de horas que debe
+
+### Objetivo
+
+Permitir registrar deudas de horas.
+
+### Tareas
+
+- Crear formulario.
+- Validar horas.
+- Guardar deuda.
+- Actualizar dashboard.
+- Registrar historial.
+
+### Resultado esperado
+
+El usuario puede ingresar horas que debe y el saldo se actualiza.
+
+---
+
+## Fase 8: Cálculo y comparación
+
+### Objetivo
+
+Calcular saldo interno y comparar con el PDF.
+
+### Tareas
+
+- Crear servicio de cálculo.
+- Sumar pagos.
+- Sumar deudas.
+- Aplicar ajustes.
+- Calcular diferencia.
+- Definir estado.
+- Mostrar resultado en dashboard.
+
+### Resultado esperado
+
+El sistema muestra si los datos coinciden o no.
+
+---
+
+## Fase 9: Historial
+
+### Objetivo
+
+Mostrar todos los movimientos.
+
+### Tareas
+
+- Crear pantalla de historial.
+- Filtrar por fecha.
+- Filtrar por tipo.
+- Ver detalle.
+- Anular mediante ajuste.
+
+### Resultado esperado
+
+El usuario puede revisar todos los registros.
+
+---
+
+## Fase 10: Reportes
+
+### Objetivo
+
+Generar reportes básicos.
+
+### Tareas
+
+- Crear reporte visual.
+- Exportar PDF.
+- Exportar CSV.
+- Exportar Excel si se requiere.
+- Agregar filtros.
+
+### Resultado esperado
+
+El usuario puede generar y descargar reportes.
+
+---
+
+## Fase 11: Seguridad y permisos
+
+### Objetivo
+
+Proteger datos y acciones.
+
+### Tareas
+
+- Definir roles.
+- Aplicar permisos en frontend.
+- Aplicar reglas en Firestore.
+- Proteger Storage.
+- Registrar auditoría.
+
+### Resultado esperado
+
+Cada usuario solo accede a lo permitido.
+
+---
+
+## Fase 12: Pulido final
+
+### Objetivo
+
+Mejorar diseño, errores y experiencia de usuario.
+
+### Tareas
+
+- Mejorar interfaz.
+- Ajustar colores.
+- Optimizar carga.
+- Revisar errores.
+- Probar en Android.
+- Generar APK.
+
+### Resultado esperado
+
+Aplicación lista para pruebas finales.
+
+---
+
+# 27. Reglas obligatorias para el agente de Cursor
+
+Estas reglas deben colocarse en el apartado de reglas del agente de Cursor para que el desarrollo sea ordenado.
+
+## 27.1 Regla de desarrollo por fases
+
+El agente debe desarrollar el sistema fase por fase. No debe mezclar varias fases al mismo tiempo si eso genera errores o dificulta la prueba.
+
+Antes de iniciar una fase, debe revisar:
+
+- Estado actual del proyecto.
+- Archivos existentes.
+- Errores actuales.
+- Dependencias instaladas.
+- Módulo que se va a modificar.
+
+## 27.2 Regla de no romper lo existente
+
+El agente no debe eliminar código funcional sin explicar la razón.  
+Debe conservar lo que ya funciona y modificar solo lo necesario.
+
+## 27.3 Regla de archivos completos
+
+Cuando se modifique un archivo importante, el agente debe entregar el archivo completo si el cambio es grande.
+
+## 27.4 Regla de rutas claras
+
+Cada archivo creado o modificado debe indicar su ruta exacta.
+
+Ejemplo:
+
+```text
+lib/features/dashboard/presentation/pages/dashboard_page.dart
+```
+
+## 27.5 Regla de prueba obligatoria
+
+Cada vez que complete un proceso, una funcionalidad, una corrección, una pantalla, un módulo o una integración, y el resultado ya esté listo para probarse, debe avisarlo de forma obligatoria al usuario.
+
+No debe cerrar una respuesta solo diciendo que ya terminó. Debe indicar claramente que el proceso ya puede probarse y explicar exactamente qué debe hacer el usuario para validarlo.
+
+Formato obligatorio:
+
+```text
+## Estado
+Listo para probar
+
+## Qué se puede probar
+Debe explicar qué funcionalidad quedó lista.
+
+## Cómo probar
+Debe explicar paso a paso qué debe hacer el usuario para validar.
+
+## Resultado esperado
+Debe indicar qué debe observar el usuario si todo está correcto.
+```
+
+## 27.6 Estados permitidos
+
+El agente debe usar uno de estos estados:
+
+```text
+Listo para probar
+Listo parcialmente para probar
+Requiere un paso previo antes de probar
+```
+
+## 27.7 Regla para errores
+
+Si existe un error, el agente debe explicar:
+
+- Qué error encontró.
+- En qué archivo ocurre.
+- Por qué ocurre.
+- Qué cambió para corregirlo.
+- Cómo probar la corrección.
+
+## 27.8 Regla para Firebase y Google Cloud
+
+El agente no debe inventar credenciales.  
+Si se requiere Firebase, debe indicar exactamente qué dato necesita el usuario.
+
+Debe respetar:
+
+```text
+Package name:
+com.rolhoras.rol_pagos_app
+```
+
+Debe recordar que para Google Sign-In se necesita:
+
+- OAuth Android Client.
+- SHA-1 correcto.
+- Proyecto correcto.
+- Firebase conectado.
+
+## 27.9 Regla para extracción PDF
+
+El agente debe implementar la extracción del PDF de forma progresiva:
+
+1. Primero lectura de texto.
+2. Luego búsqueda de etiquetas.
+3. Luego extracción numérica.
+4. Luego confirmación manual.
+5. Luego guardado.
+6. Luego comparación.
+
+No debe iniciar con OCR complejo si primero no se prueba la lectura normal del PDF.
+
+## 27.10 Regla para cálculos
+
+El agente debe centralizar los cálculos en un servicio único.
+
+Archivo sugerido:
+
+```text
+lib/services/hour_calculation_service.dart
+```
+
+No debe repetir fórmulas en varias pantallas.
+
+## 27.11 Regla para auditoría
+
+Cada movimiento importante debe crear un registro de auditoría.
+
+Movimientos importantes:
+
+- Carga de PDF.
+- Confirmación de extracción.
+- Registro de pago.
+- Registro de deuda.
+- Ajuste.
+- Anulación.
+- Conciliación.
+
+---
+
+# 28. Prompt maestro para Cursor
+
+Este prompt puede usarse para iniciar el desarrollo en Cursor.
+
+```text
+Actúa como un desarrollador senior experto en Flutter, Firebase, arquitectura limpia, control de estados, extracción de PDF y buenas prácticas de seguridad.
+
+Vas a desarrollar una aplicación llamada RolHoras, cuyo objetivo es controlar horas pagadas, horas compensadas, horas adeudadas y comparar esos datos con valores extraídos desde un PDF.
+
+Debes trabajar fase por fase, sin romper lo que ya existe.
+
+La aplicación debe permitir:
+1. Iniciar sesión.
+2. Mostrar dashboard.
+3. Cargar PDF.
+4. Extraer del PDF:
+   - Horas saldo anterior.
+   - Horas compensadas.
+   - Saldo actual.
+5. Mostrar esos datos en el dashboard.
+6. Permitir ingresar horas pagadas.
+7. Permitir ingresar horas que debe.
+8. Calcular saldo interno.
+9. Comparar saldo interno con saldo actual del PDF.
+10. Mostrar diferencia y estado:
+    - Coincide.
+    - No coincide.
+    - Requiere revisión.
+11. Guardar historial de movimientos.
+12. Generar reportes.
+13. Respetar roles y permisos.
+14. Registrar auditoría.
+
+Reglas obligatorias:
+- Trabaja por fases.
+- Indica siempre los archivos modificados.
+- No elimines código funcional sin justificar.
+- Entrega archivos completos cuando el cambio sea grande.
+- Centraliza cálculos en un servicio.
+- Centraliza lectura de PDF en un servicio.
+- No dupliques lógica.
+- Usa nombres claros.
+- Mantén estructura ordenada.
+- Al finalizar cada proceso listo para probar, debes responder con:
+
+## Estado
+Listo para probar / Listo parcialmente para probar / Requiere un paso previo antes de probar
+
+## Qué se puede probar
+Explica la funcionalidad terminada.
+
+## Cómo probar
+Da pasos exactos para validar.
+
+## Resultado esperado
+Indica qué debe observarse si funciona correctamente.
+
+Inicia revisando el proyecto actual y proponiendo la Fase 1 sin modificar todo de golpe.
+```
+
+---
+
+# 29. Guía de pruebas generales
+
+## 29.1 Prueba de inicio de sesión
+
+### Pasos
+
+1. Abrir la aplicación.
+2. Ingresar correo y contraseña.
+3. Presionar iniciar sesión.
+
+### Resultado esperado
+
+El usuario ingresa al dashboard.
+
+---
+
+## 29.2 Prueba de carga de PDF
+
+### Pasos
+
+1. Ingresar al dashboard.
+2. Presionar “Cargar PDF”.
+3. Seleccionar un archivo PDF.
+4. Confirmar carga.
+
+### Resultado esperado
+
+El PDF se guarda y aparece como último documento cargado.
+
+---
+
+## 29.3 Prueba de extracción de PDF
+
+### Pasos
+
+1. Cargar PDF con datos de horas.
+2. Esperar lectura.
+3. Revisar los valores extraídos.
+4. Confirmar.
+
+### Resultado esperado
+
+El sistema identifica:
+
+```text
+Horas saldo anterior
+Horas compensadas
+Saldo actual
+```
+
+---
+
+## 29.4 Prueba de comparación
+
+### Pasos
+
+1. Cargar un PDF con:
+   - Horas saldo anterior: -496.45
+   - Horas compensadas: 128.16
+   - Saldo actual: -368.29
+2. Confirmar datos.
+3. Revisar dashboard.
+
+### Resultado esperado
+
+El dashboard debe mostrar:
+
+```text
+Saldo calculado: -368.29
+Diferencia: 0.00
+Estado: Coincide
+```
+
+---
+
+## 29.5 Prueba de horas pagadas
+
+### Pasos
+
+1. Ir a “Registrar pago”.
+2. Ingresar 20.00 horas.
+3. Guardar.
+4. Regresar al dashboard.
+
+### Resultado esperado
+
+El saldo calculado debe aumentar 20.00 horas respecto al saldo anterior.
+
+---
+
+## 29.6 Prueba de horas que debe
+
+### Pasos
+
+1. Ir a “Registrar deuda”.
+2. Ingresar 10.00 horas.
+3. Guardar.
+4. Regresar al dashboard.
+
+### Resultado esperado
+
+El saldo calculado debe disminuir 10.00 horas respecto al saldo anterior.
+
+---
+
+## 29.7 Prueba de historial
+
+### Pasos
+
+1. Registrar un pago.
+2. Registrar una deuda.
+3. Cargar un PDF.
+4. Abrir historial.
+
+### Resultado esperado
+
+Deben aparecer todos los movimientos con fecha, tipo, horas y usuario.
+
+---
+
+# 30. Requisitos no funcionales
+
+## 30.1 Rendimiento
+
+- El dashboard debe cargar rápido.
+- La lectura de PDF no debe bloquear la interfaz.
+- Los reportes deben generarse sin congelar la app.
+
+## 30.2 Seguridad
+
+- Los datos deben estar protegidos por usuario.
+- Los PDF no deben ser públicos.
+- Los roles deben validarse.
+- Las reglas de Firestore deben impedir acceso no autorizado.
+
+## 30.3 Usabilidad
+
+- La app debe ser fácil de usar.
+- Los botones deben ser claros.
+- Los mensajes deben ser comprensibles.
+- Los estados deben ser visibles.
+
+## 30.4 Mantenibilidad
+
+- Código separado por módulos.
+- Servicios centralizados.
+- Nombres claros.
+- Evitar duplicación.
+- Documentar reglas de cálculo.
+
+## 30.5 Escalabilidad
+
+El sistema debe poder crecer para:
+
+- Más usuarios.
+- Más documentos.
+- Más reportes.
+- Más roles.
+- Más tipos de movimientos.
+
+---
+
+# 31. Riesgos técnicos y soluciones
+
+| Riesgo | Solución |
+|---|---|
+| PDF no tiene texto seleccionable | Usar OCR como fase posterior |
+| Google Sign-In falla por SHA-1 | Revisar OAuth Android Client |
+| Cálculos duplicados | Centralizar en servicio |
+| Usuario borra registros por error | Usar anulación lógica |
+| Diferencias por decimales | Usar tolerancia y decimales controlados |
+| PDF con formato diferente | Permitir corrección manual |
+| Falta de conexión | Mostrar mensajes y reintentar |
+| Reglas Firebase mal configuradas | Probar roles antes de producción |
+
+---
+
+# 32. Recomendaciones finales de implementación
+
+1. Desarrollar primero el dashboard con datos simulados.
+2. Luego implementar carga de PDF.
+3. Después implementar extracción simple de texto.
+4. Luego implementar confirmación manual.
+5. Después implementar movimientos de pagos y deudas.
+6. Luego crear el cálculo centralizado.
+7. Finalmente implementar reportes y auditoría.
+8. No implementar OCR hasta confirmar que la lectura normal del PDF funciona.
+9. No mezclar lógica de cálculo dentro de pantallas.
+10. No permitir eliminación física de movimientos.
+11. Probar cada fase antes de avanzar.
+
+---
+
+# 33. Definición de terminado del proyecto
+
+El proyecto se considera terminado cuando:
+
+- La aplicación permite iniciar sesión.
+- El dashboard muestra datos reales.
+- El usuario puede cargar PDF.
+- El sistema extrae datos principales del PDF.
+- El usuario puede confirmar o corregir la extracción.
+- El usuario puede registrar horas pagadas.
+- El usuario puede registrar horas que debe.
+- El sistema calcula el saldo.
+- El sistema compara contra el PDF.
+- El sistema muestra diferencia y estado.
+- El historial funciona.
+- Los reportes básicos funcionan.
+- Los permisos funcionan.
+- La aplicación puede instalarse en Android.
+- El sistema puede ser probado por un usuario final.
+
+---
+
+# 34. Resumen ejecutivo
+
+RolHoras será una aplicación de control de horas enfocada en precisión, trazabilidad y comparación con documentos oficiales en PDF.
+
+El sistema no dependerá únicamente de lo que el usuario escriba manualmente. Tendrá una validación cruzada entre los datos extraídos del PDF, los movimientos internos y el saldo calculado.
+
+El dashboard será el centro principal de control, mostrando saldos, pagos, deudas, diferencias y estados de conciliación.
+
+El desarrollo debe realizarse por fases y cada fase debe terminar con una guía clara de prueba para que el usuario pueda validar el avance.
+
+---
+
+# 35. Anexo: ejemplo visual de datos del PDF
+
+Datos identificados en el documento de referencia:
+
+```text
+NOTAS HORAS
+
+HORAS SALDO ANTERIOR       -496.45
+HORAS COMPENSADAS           128.16
+SALDO ACTUAL               -368.29
+```
+
+Interpretación:
+
+```text
+Saldo anterior negativo:
+El usuario tenía una deuda de 496.45 horas.
+
+Horas compensadas:
+Se compensaron 128.16 horas.
+
+Saldo actual:
+Después de la compensación, aún queda un saldo negativo de 368.29 horas.
+```
+
+Cálculo:
+
+```text
+-496.45 + 128.16 = -368.29
+```
+
+Resultado:
+
+```text
+El cálculo coincide con el saldo actual mostrado en el PDF.
+```
+
+
+---
+
+# Cierre del documento consolidado
+
+Este archivo integra en un solo documento el contenido completo de los dos expedientes técnicos entregados para el proyecto RolHoras.

@@ -22,6 +22,12 @@ class PayrollDocumentsDao extends DatabaseAccessor<AppDatabase>
     )..where((t) => t.fileHash.equals(hash))).getSingleOrNull();
   }
 
+  Future<PayrollDocumentsTableData?> findById(String id) {
+    return (select(
+      payrollDocumentsTable,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
+  }
+
   Future<PayrollDocumentsTableData?> findByGmailAttachment({
     required String messageId,
     required String attachmentId,
@@ -36,5 +42,9 @@ class PayrollDocumentsDao extends DatabaseAccessor<AppDatabase>
 
   Future<void> upsert(PayrollDocumentsTableCompanion entry) async {
     await into(payrollDocumentsTable).insertOnConflictUpdate(entry);
+  }
+
+  Future<int> deleteById(String id) {
+    return (delete(payrollDocumentsTable)..where((t) => t.id.equals(id))).go();
   }
 }

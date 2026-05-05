@@ -36,6 +36,37 @@ class PayrollRepository {
     );
   }
 
+  Future<PayrollDocument?> getPayrollById(String id) async {
+    final row = await _db.payrollDocumentsDao.findById(id);
+    return row == null ? null : _mapRow(row);
+  }
+
+  Future<void> markPendingPassword({
+    required PayrollDocument payroll,
+    String? reason,
+  }) async {
+    await _db.payrollDocumentsDao.upsert(
+      PayrollDocumentsTableCompanion(
+        id: Value(payroll.id),
+        year: Value(payroll.year),
+        month: Value(payroll.month),
+        source: Value(payroll.source),
+        fileName: Value(payroll.fileName),
+        localPath: Value(payroll.localPath),
+        fileHash: Value(payroll.fileHash),
+        importedAtMillis: Value(payroll.importedAt.millisecondsSinceEpoch),
+        processedAtMillis: const Value.absent(),
+        status: Value(PayrollDocumentStatus.pendingPassword.name),
+        notes: Value(
+          (reason ?? 'Pendiente contraseña para procesar automáticamente.').trim(),
+        ),
+        senderEmail: Value(payroll.senderEmail),
+        gmailMessageId: Value(payroll.gmailMessageId),
+        gmailAttachmentId: Value(payroll.gmailAttachmentId),
+      ),
+    );
+  }
+
   Future<PayrollImportResult> importLocalPdf({
     required String sourcePath,
     required String originalFileName,
@@ -69,9 +100,10 @@ class PayrollRepository {
     );
 
     final nowMillis = DateTime.now().millisecondsSinceEpoch;
+    final createdId = nowMillis.toString();
     await _db.payrollDocumentsDao.upsert(
       PayrollDocumentsTableCompanion.insert(
-        id: nowMillis.toString(),
+        id: createdId,
         year: year,
         month: month,
         source: 'local',
@@ -92,7 +124,7 @@ class PayrollRepository {
       ),
     );
 
-    return PayrollImportResult.success();
+    return PayrollImportResult.success(createdId: createdId);
   }
 
   Future<PayrollImportResult> importGmailPdf({
@@ -160,9 +192,10 @@ class PayrollRepository {
     } catch (_) {}
 
     final nowMillis = DateTime.now().millisecondsSinceEpoch;
+    final createdId = nowMillis.toString();
     await _db.payrollDocumentsDao.upsert(
       PayrollDocumentsTableCompanion.insert(
-        id: nowMillis.toString(),
+        id: createdId,
         year: year,
         month: month,
         source: 'gmail',
@@ -183,7 +216,7 @@ class PayrollRepository {
       ),
     );
 
-    return PayrollImportResult.success();
+    return PayrollImportResult.success(createdId: createdId);
   }
 
   Future<PayrollImportResult> processPayroll({
@@ -224,12 +257,16 @@ class PayrollRepository {
     final text = extraction.text!;
     final preview = text.length <= 600 ? text : text.substring(0, 600);
     final parsed = _pdfTextParser.parse(text);
+    final parsedYear = parsed.periodYear;
+    final parsedMonth = parsed.periodMonth;
+    final finalYear = parsedYear ?? payroll.year;
+    final finalMonth = parsedMonth ?? payroll.month;
 
     await _db.payrollDocumentsDao.upsert(
       PayrollDocumentsTableCompanion(
         id: Value(payroll.id),
-        year: Value(payroll.year),
-        month: Value(payroll.month),
+        year: Value(finalYear),
+        month: Value(finalMonth),
         source: Value(payroll.source),
         fileName: Value(payroll.fileName),
         localPath: Value(localPath),
@@ -244,6 +281,32 @@ class PayrollRepository {
         notes: const Value.absent(),
       ),
     );
+
+    return PayrollImportResult.success();
+  }
+
+  Future<PayrollImportResult> deletePayroll(PayrollDocument payroll) async {
+    final localPath = payroll.localPath;
+    if (localPath != null && localPath.trim().isNotEmpty) {
+      try {
+        final file = File(localPath);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (e) {
+        return PayrollImportResult.failure(
+          'No se pudo eliminar el archivo local del rol. Detalle: $e',
+        );
+      }
+    }
+
+    try {
+      await _db.payrollDocumentsDao.deleteById(payroll.id);
+    } catch (e) {
+      return PayrollImportResult.failure(
+        'No se pudo eliminar el registro del rol. Detalle: $e',
+      );
+    }
 
     return PayrollImportResult.success();
   }

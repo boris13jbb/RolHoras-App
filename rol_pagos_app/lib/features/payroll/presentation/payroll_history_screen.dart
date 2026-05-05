@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
 
 import '../../../core/providers/secure_storage_provider.dart';
 import '../../hours/application/manual_hours_controller.dart';
 import '../../../core/utils/year_month.dart';
-import '../../hours/domain/hour_balance.dart';
 import '../../hours/domain/hour_payment.dart';
 import '../../../app.dart';
 import '../domain/payroll_document.dart';
 import '../application/payroll_providers.dart';
+import '../application/payroll_reconciliation.dart';
 import '../../../shared/layouts/app_scaffold.dart';
 import '../../../shared/widgets/section_card.dart';
 
@@ -676,13 +677,16 @@ class _PayrollList extends StatelessWidget {
                   if (p.fileHash != null)
                     'Hash: ${p.fileHash!.substring(0, 10)}…',
                   if (p.detectedDebtHours != null)
-                    'Deuda detectada: ${p.detectedDebtHours!.toStringAsFixed(1)}h',
+                    'Saldo anterior (deuda): ${p.detectedDebtHours!.abs().toStringAsFixed(1)}h',
                 ].join(' · '),
               ),
-              trailing: hasDetected
-                  ? balanceAsync.when(
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hasDetected)
+                    balanceAsync.when(
                       data: (balance) {
-                        final issues = _comparePayrollVsBalance(p, balance);
+                        final issues = payrollReconciliationIssues(p, balance);
                         if (issues.isEmpty) {
                           return const Icon(Icons.verified_outlined);
                         }
@@ -701,9 +705,97 @@ class _PayrollList extends StatelessWidget {
                       ),
                       error: (error, stack) => const Icon(Icons.help_outline),
                     )
-                  : (p.status == PayrollDocumentStatus.processed
-                      ? const Icon(Icons.check_circle_outline)
-                      : null),
+                  else if (p.status == PayrollDocumentStatus.processed)
+                    const Icon(Icons.check_circle_outline),
+                  PopupMenuButton<_PayrollAction>(
+                    onSelected: (action) async {
+                      final repo = ref.read(payrollRepositoryProvider);
+
+                      if (action == _PayrollAction.view) {
+                        final path = p.localPath;
+                        if (path == null || path.trim().isEmpty) {
+                          rootScaffoldMessengerKey.currentState?.showSnackBar(
+                            const SnackBar(
+                              content: Text('Este rol no tiene archivo local.'),
+                            ),
+                          );
+                          return;
+                        }
+                        final result = await OpenFilex.open(path);
+                        if (!context.mounted) return;
+                        if (result.type != ResultType.done) {
+                          rootScaffoldMessengerKey.currentState?.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                result.message.isNotEmpty
+                                    ? result.message
+                                    : 'No se pudo abrir el PDF en este dispositivo.',
+                              ),
+                            ),
+                          );
+                        }
+                        return;
+                      }
+
+                      if (action == _PayrollAction.process) {
+                        onProcess(p);
+                        return;
+                      }
+
+                      if (action == _PayrollAction.delete) {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                            title: const Text('Eliminar rol'),
+                            content: Text(
+                              '¿Eliminar este PDF del historial?\n\n${p.fileName}',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(false),
+                                child: const Text('Cancelar'),
+                              ),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(true),
+                                child: const Text('Eliminar'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true || !context.mounted) return;
+
+                        final result = await repo.deletePayroll(p);
+                        rootScaffoldMessengerKey.currentState?.showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              result.success
+                                  ? 'Rol eliminado'
+                                  : (result.message ??
+                                      'No se pudo eliminar el rol'),
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: _PayrollAction.view,
+                        child: Text('Ver PDF'),
+                      ),
+                      const PopupMenuItem(
+                        value: _PayrollAction.process,
+                        child: Text('Procesar'),
+                      ),
+                      const PopupMenuItem(
+                        value: _PayrollAction.delete,
+                        child: Text('Eliminar'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
               onTap: () async {
                 if (!hasDetected) return;
                 final balance = await balanceAsync.maybeWhen(
@@ -711,7 +803,7 @@ class _PayrollList extends StatelessWidget {
                   orElse: () async => null,
                 );
                 if (!context.mounted || balance == null) return;
-                final issues = _comparePayrollVsBalance(p, balance);
+                final issues = payrollReconciliationIssues(p, balance);
                 await showDialog<void>(
                   context: context,
                   builder: (dialogContext) => AlertDialog(
@@ -748,42 +840,9 @@ class _PayrollList extends StatelessWidget {
     };
   }
 
-  List<String> _comparePayrollVsBalance(
-    PayrollDocument payroll,
-    HourBalanceResult balance,
-  ) {
-    const tolerance = 0.1;
-    final issues = <String>[];
-
-    void check(String label, double? detected, double actual) {
-      if (detected == null) return;
-      final detectedAbs = detected.abs();
-      final diff = (detectedAbs - actual).abs();
-      if (diff > tolerance) {
-        issues.add(
-          '$label: PDF ${detected.toStringAsFixed(1)}h vs App ${actual.toStringAsFixed(1)}h (Δ ${diff.toStringAsFixed(1)}h)',
-        );
-      }
-    }
-
-    // En el rol puede venir negativo (deuda). Comparamos por magnitud.
-    check('Saldo anterior (deuda)', payroll.detectedDebtHours, balance.totalDebtHours);
-    // En app: paid es equivalente. En PDF asumimos que "pagadas" es equivalente; si no, se ajusta luego.
-    check('Pagadas (eq.)', payroll.detectedPaidHours, balance.totalPaidHours);
-
-    // "Saldo actual" puede venir negativo (pendiente) o positivo (a favor).
-    final detectedCurrent = payroll.detectedPendingHours;
-    if (detectedCurrent != null) {
-      if (detectedCurrent < 0) {
-        check('Saldo actual (pendiente)', detectedCurrent, balance.pendingHours);
-      } else {
-        check('Saldo actual (a favor)', detectedCurrent, balance.overtimeHours);
-      }
-    }
-
-    return issues;
-  }
 }
+
+enum _PayrollAction { view, process, delete }
 
 class _YearMonth {
   const _YearMonth(this.year, this.month);

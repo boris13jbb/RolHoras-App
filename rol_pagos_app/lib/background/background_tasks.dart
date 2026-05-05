@@ -40,10 +40,25 @@ void callbackDispatcher() {
 
       final auth = GmailAuthService();
       await auth.initialize(serverClientId: resolved);
-      await auth.tryRestoreSession();
+      final restored = await auth.tryRestoreSession();
 
       // Evitar prompts UI en background.
-      await auth.getAuthHeaders(promptIfNecessary: false);
+      if (restored == null) {
+        await storage.setGmailLastBackgroundSyncResult(
+          'BG omitido: no hay sesión de Gmail. Abre la app y conecta Gmail primero.',
+        );
+        await storage.setGmailLastBackgroundSyncAt(DateTime.now());
+        return true;
+      }
+      try {
+        await auth.getAuthHeaders(promptIfNecessary: false);
+      } on StateError {
+        await storage.setGmailLastBackgroundSyncResult(
+          'BG omitido: no se pudieron obtener credenciales sin UI. Abre la app y conecta Gmail.',
+        );
+        await storage.setGmailLastBackgroundSyncAt(DateTime.now());
+        return true;
+      }
 
       final db = AppDatabase();
       final payrollRepo = PayrollRepository(db: db);
@@ -53,9 +68,26 @@ void callbackDispatcher() {
         payrollRepository: payrollRepo,
       );
 
-      final result = await sync.syncPayrollPdfs(senderEmail: sender);
+      if (sender == null || sender.trim().isEmpty) {
+        await storage.setGmailLastBackgroundSyncResult(
+          'BG omitido: falta el correo del remitente (quien envía el rol) en Configuración.',
+        );
+        await storage.setGmailLastBackgroundSyncAt(DateTime.now());
+        await db.close();
+        return true;
+      }
+
+      final pdfPassword = (await storage.getPdfPassword())?.trim();
+      final result = await sync.syncPayrollPdfs(
+        senderEmail: sender,
+        pdfPassword: pdfPassword,
+      );
       await storage.setGmailLastBackgroundSyncResult(
-        'BG: ${result.imported} importados, ${result.duplicates} duplicados, ${result.failed} fallidos.',
+        'BG: ${result.imported} importados, '
+        '${result.processed} procesados, '
+        '${result.pendingPassword} pendientes contraseña, '
+        '${result.duplicates} duplicados, '
+        '${result.failed} fallidos.',
       );
       await storage.setGmailLastBackgroundSyncAt(DateTime.now());
 

@@ -3,10 +3,11 @@ class PayrollImportResult {
     required this.success,
     this.duplicated,
     this.message,
+    this.createdId,
   });
 
-  factory PayrollImportResult.success() =>
-      const PayrollImportResult._(success: true);
+  factory PayrollImportResult.success({String? createdId}) =>
+      PayrollImportResult._(success: true, createdId: createdId);
 
   factory PayrollImportResult.duplicate(String message) =>
       PayrollImportResult._(success: false, duplicated: true, message: message);
@@ -20,4 +21,5 @@ class PayrollImportResult {
   final bool success;
   final bool? duplicated;
   final String? message;
+  final String? createdId;
 }

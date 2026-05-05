@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/constants/app_routes.dart';
+import '../../payroll/application/latest_payroll_comparison_provider.dart';
 import '../application/dashboard_summary_provider.dart';
 import '../../hours/application/manual_hours_controller.dart';
 import '../../hours/domain/hour_balance.dart';
@@ -14,12 +15,15 @@ import '../../hours/domain/hour_payment.dart';
 import '../../../shared/layouts/app_scaffold.dart';
 import '../../../shared/widgets/section_card.dart';
 
+import 'dashboard_last_payroll_section.dart';
+
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final summaryAsync = ref.watch(dashboardSummaryProvider);
+    final latestPayrollAsync = ref.watch(latestPayrollComparisonProvider);
 
     return AppScaffold(
       title: 'Dashboard',
@@ -41,6 +45,8 @@ class DashboardScreen extends ConsumerWidget {
             'Dashboard profesional (Fase 3): tarjetas, progreso, gráfico y resumen mensual.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
+          const SizedBox(height: 20),
+          DashboardLastPayrollSection(asyncValue: latestPayrollAsync),
           const SizedBox(height: 20),
           summaryAsync.when(
             data: (summary) {

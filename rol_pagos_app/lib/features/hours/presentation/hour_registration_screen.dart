@@ -202,7 +202,7 @@ class _HourRegistrationScreenState
     return double.tryParse(value.trim().replaceAll(',', '.'));
   }
 
-  void _savePayment() {
+  Future<void> _savePayment() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -212,23 +212,30 @@ class _HourRegistrationScreenState
         ? _parseNumber(_customPercentageController.text)!
         : _selectedPercentage;
 
-    ref
-        .read(manualHoursControllerProvider)
-        .addPayment(
-          date: _selectedDate,
-          hours: hours,
-          percentage: percentage,
-          observation: _observationController.text,
-        );
+    try {
+      await ref.read(manualHoursControllerProvider).addPayment(
+            date: _selectedDate,
+            hours: hours,
+            percentage: percentage,
+            observation: _observationController.text,
+          );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Pago de horas guardado localmente')),
-    );
+      if (!mounted) return;
 
-    _hoursController.clear();
-    _customPercentageController.clear();
-    _observationController.clear();
-    setState(() => _selectedPercentage = 100);
-    context.go(AppRoutes.dashboard);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pago de horas guardado localmente')),
+      );
+
+      _hoursController.clear();
+      _customPercentageController.clear();
+      _observationController.clear();
+      setState(() => _selectedPercentage = 100);
+      context.go(AppRoutes.dashboard);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo guardar el pago: $e')),
+      );
+    }
   }
 }

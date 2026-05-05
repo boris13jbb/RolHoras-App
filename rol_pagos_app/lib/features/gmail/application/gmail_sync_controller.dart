@@ -118,8 +118,9 @@ class GmailSyncController extends Notifier<GmailSyncState> {
 
   Future<void> setSenderFilter(String email) async {
     final storage = ref.read(secureStorageServiceProvider);
-    await storage.setGmailSenderFilter(email);
-    state = state.copyWith(senderFilter: email.trim());
+    final normalized = email.trim().toLowerCase();
+    await storage.setGmailSenderFilter(normalized);
+    state = state.copyWith(senderFilter: normalized);
   }
 
   Future<void> setAutoSyncEnabled(bool enabled) async {
@@ -140,11 +141,29 @@ class GmailSyncController extends Notifier<GmailSyncState> {
 
     state = state.copyWith(isSyncing: true, lastResultMessageToNull: true);
     try {
+      final sender = (state.senderFilter ?? '').trim();
+      if (sender.isEmpty) {
+        state = state.copyWith(
+          lastResultMessage:
+              'Configura primero el correo del remitente (quien envía el rol) y vuelve a intentar.',
+        );
+        return;
+      }
+      final storage = ref.read(secureStorageServiceProvider);
+      final pdfPassword = (await storage.getPdfPassword())?.trim();
+
       final svc = ref.read(gmailSyncServiceProvider);
-      final result = await svc.syncPayrollPdfs(senderEmail: state.senderFilter);
+      final result = await svc.syncPayrollPdfs(
+        senderEmail: sender,
+        pdfPassword: pdfPassword,
+      );
       state = state.copyWith(
         lastResultMessage:
-            'Sincronización: ${result.imported} importados, ${result.duplicates} duplicados, ${result.failed} fallidos.',
+            'Sincronización: ${result.imported} importados, '
+            '${result.processed} procesados, '
+            '${result.pendingPassword} pendientes contraseña, '
+            '${result.duplicates} duplicados, '
+            '${result.failed} fallidos.',
       );
     } catch (e) {
       state = state.copyWith(lastResultMessage: 'Error sincronizando: $e');
