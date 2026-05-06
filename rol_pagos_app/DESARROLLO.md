@@ -237,3 +237,27 @@ Que al sincronizar desde Gmail, los roles importados se **procesen automáticame
 
 ### Validación realizada
 - `flutter analyze`: OK.
+
+---
+
+## Actualización 2026-05-05 — Persistencia Gmail y remitente al reabrir la app
+
+### Problema
+Tras cerrar y abrir la app, la UI pedía de nuevo conectar Gmail y el campo de remitente aparecía vacío aunque los valores estuvieran guardados.
+
+### Causa
+1. `GmailAuthService.tryRestoreSession()` hacía `await` del Future de `attemptLightweightAuthentication()` pero **no usaba el valor devuelto** y leía `_currentUser`, que a menudo seguía en `null`.
+2. El `TextFormField` del remitente usaba solo `initialValue`; Flutter no actualiza ese valor cuando el estado asíncrono carga el texto desde almacén seguro.
+
+### Solución
+- Devolver (y asignar a `_currentUser`) el `GoogleSignInAccount?` que devuelve `attemptLightweightAuthentication()`; si el Future es null, breve espera y uso del stream.
+- Estado `gmailPrefsLoaded` + `key: ValueKey(gmailPrefsLoaded)` en el campo remitente para reconstruir el campo al hidratar desde secure storage.
+
+### Archivos
+- `lib/services/gmail_auth_service.dart`
+- `lib/features/gmail/application/gmail_sync_state.dart`
+- `lib/features/gmail/application/gmail_sync_controller.dart`
+- `lib/features/settings/presentation/settings_screen.dart`
+
+### Validación
+- `flutter analyze` en los archivos tocados: OK.

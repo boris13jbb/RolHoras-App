@@ -38,7 +38,11 @@ class GmailSyncController extends Notifier<GmailSyncState> {
     final storage = ref.read(secureStorageServiceProvider);
     final enabled = await storage.getGmailAutoSyncEnabled();
     final sender = await storage.getGmailSenderFilter();
-    state = state.copyWith(autoSyncEnabled: enabled, senderFilter: sender);
+    state = state.copyWith(
+      autoSyncEnabled: enabled,
+      senderFilter: sender,
+      gmailPrefsLoaded: true,
+    );
 
     final resolved = await resolveGmailServerClientId(storage);
     final auth = ref.read(gmailAuthServiceProvider);

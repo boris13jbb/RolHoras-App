@@ -79,10 +79,20 @@ class GmailAuthService {
   /// se tratan como “sin sesión” para no dejar excepciones sin capturar.
   Future<GoogleSignInAccount?> tryRestoreSession() async {
     try {
-      final maybeFuture = _googleSignIn.attemptLightweightAuthentication();
-      if (maybeFuture is Future) {
-        await maybeFuture;
+      final lightweightFuture = _googleSignIn.attemptLightweightAuthentication();
+      // Importante: el Future devuelve la cuenta restaurada; no basta con leer
+      // _currentUser (el listener puede ir un frame detrás o no dispararse aún).
+      if (lightweightFuture != null) {
+        final account = await lightweightFuture;
+        if (account != null) {
+          _currentUser = account;
+        }
+        return account;
       }
+      // Si la plataforma usa solo el stream (future == null), dar margen a que
+      // llegue el evento de inicio de sesión.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      return _currentUser;
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint('GmailAuthService.tryRestoreSession: $e');
@@ -90,7 +100,6 @@ class GmailAuthService {
       }
       return null;
     }
-    return _currentUser;
   }
 
   Future<GoogleSignInAccount?> signIn() async {

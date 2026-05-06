@@ -7,6 +7,7 @@ class GmailSyncState {
     required this.lastResultMessage,
     required this.autoSyncEnabled,
     required this.senderFilter,
+    required this.gmailPrefsLoaded,
   });
 
   final bool isConfigured;
@@ -16,6 +17,8 @@ class GmailSyncState {
   final String? lastResultMessage;
   final bool autoSyncEnabled;
   final String? senderFilter;
+  /// `true` tras leer remitente y auto-sync desde almacén seguro (hidratación).
+  final bool gmailPrefsLoaded;
 
   GmailSyncState copyWith({
     bool? isConfigured,
@@ -28,6 +31,7 @@ class GmailSyncState {
     bool? autoSyncEnabled,
     String? senderFilter,
     bool senderFilterToNull = false,
+    bool? gmailPrefsLoaded,
   }) {
     return GmailSyncState(
       isConfigured: isConfigured ?? this.isConfigured,
@@ -43,6 +47,7 @@ class GmailSyncState {
       senderFilter: senderFilterToNull
           ? null
           : (senderFilter ?? this.senderFilter),
+      gmailPrefsLoaded: gmailPrefsLoaded ?? this.gmailPrefsLoaded,
     );
   }
 
@@ -54,5 +59,6 @@ class GmailSyncState {
     lastResultMessage: null,
     autoSyncEnabled: false,
     senderFilter: null,
+    gmailPrefsLoaded: false,
   );
 }

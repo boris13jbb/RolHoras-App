@@ -114,8 +114,8 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 10),
                     TextFormField(
-                      initialValue:
-                          gmailState.senderFilter ?? '',
+                      key: ValueKey(gmailState.gmailPrefsLoaded),
+                      initialValue: gmailState.senderFilter ?? '',
                       decoration: const InputDecoration(
                         labelText: 'Correo del remitente (quien envía el rol)',
                         helperText:
