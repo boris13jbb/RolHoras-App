@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rolpagos-postgres
+    environment:
+      POSTGRES_USER: rolpagos
+      POSTGRES_PASSWORD: rolpagos_dev
+      POSTGRES_DB: rolpagos
+    ports:
+      - "5433:5432"
+    volumes:
+      - rolpagos_pg:/var/lib/postgresql/data
+      - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rolpagos -d rolpagos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./services/api
+    container_name: rolpagos-api
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://rolpagos:rolpagos_dev@postgres:5432/rolpagos
+      DATABASE_URL_SYNC: postgresql://rolpagos:rolpagos_dev@postgres:5432/rolpagos
+      API_PUBLIC_URL: http://localhost:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./services/worker
+    container_name: rolpagos-worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://rolpagos:rolpagos_dev@postgres:5432/rolpagos
+      DATABASE_URL_SYNC: postgresql://rolpagos:rolpagos_dev@postgres:5432/rolpagos
+    volumes:
+      - ./storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+volumes:
+  rolpagos_pg:

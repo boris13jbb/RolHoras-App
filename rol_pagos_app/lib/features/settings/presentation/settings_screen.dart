@@ -4,10 +4,13 @@ import 'package:intl/intl.dart';
 
 import '../../../core/providers/secure_storage_provider.dart';
 import '../../../core/providers/user_settings_providers.dart';
+import '../../../core/providers/app_database_provider.dart';
 import '../../../app.dart';
-import '../../../background/background_tasks.dart';
+import '../../../data/local/app_database.dart';
+import '../../../services/gmail_auth_service.dart';
 import '../../../services/gmail_config_resolver.dart';
 import '../../gmail/application/gmail_providers.dart';
+import '../../saas/presentation/saas_gmail_section.dart';
 import '../../../shared/layouts/app_scaffold.dart';
 import '../../../shared/widgets/section_card.dart';
 
@@ -16,7 +19,6 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final passwordExistsAsync = ref.watch(pdfPasswordExistsProvider);
     final storage = ref.watch(secureStorageServiceProvider);
     final userSettingsAsync = ref.watch(userSettingsStreamProvider);
 
@@ -26,50 +28,17 @@ class SettingsScreen extends ConsumerWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SectionCard(
-            title: 'Seguridad del PDF',
-            subtitle:
-                'La contraseña se guarda usando almacenamiento seguro. No se escribe en el código fuente.',
-            child: Column(
-              children: [
-                passwordExistsAsync.when(
-                  data: (exists) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.lock_outline),
-                    title: const Text('Contraseña del PDF'),
-                    subtitle: Text(
-                      exists
-                          ? 'Guardada en almacenamiento seguro'
-                          : 'No configurada',
-                    ),
-                    trailing: exists
-                        ? OutlinedButton(
-                            onPressed: () => _deletePassword(context, ref),
-                            child: const Text('Eliminar'),
-                          )
-                        : null,
-                  ),
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (error, stack) => Text('$error'),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => _setPassword(context, ref),
-                    icon: const Icon(Icons.verified_user_outlined),
-                    label: const Text('Guardar / actualizar'),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const _PdfPasswordSection(),
+          const SizedBox(height: 20),
+          _EditableSenderSection(userSettingsAsync: userSettingsAsync),
+          const SizedBox(height: 20),
+          const SaasGmailSection(),
           const SizedBox(height: 20),
           SectionCard(
-            title: 'Gmail',
+            title: 'Gmail local (opcional)',
             subtitle:
-                'Conecta tu cuenta para buscar y descargar adjuntos PDF automáticamente.',
+                'Solo si usas Google Sign-In en el teléfono. Si falla, usa el panel web '
+                'https://rol-pagos-admin.vercel.app/settings o la sección SaaS de arriba.',
             child: Consumer(
               builder: (context, ref, _) {
                 final gmailState = ref.watch(gmailSyncControllerProvider);
@@ -78,9 +47,59 @@ class SettingsScreen extends ConsumerWidget {
                 );
                 final dateFmt = DateFormat('dd/MM/yyyy HH:mm');
 
+                final localAuthError = gmailState.lastResultMessage;
+                final showLocalAuthHint = !gmailState.isConnected;
+
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (showLocalAuthHint) ...[
+                      Card(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                localAuthError != null &&
+                                        (localAuthError.toLowerCase().contains(
+                                              'reauth',
+                                            ) ||
+                                            localAuthError.contains('[16]'))
+                                    ? 'Account reauth failed / [16]'
+                                    : 'Gmail local requiere OAuth alineado',
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onErrorContainer,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'google-services.json ya apunta a '
+                                '“rol-pagos-saas-b7b04” con OAuth Android.\n\n'
+                                'En OAuth (abajo) pega este Web Client ID:\n'
+                                '${GmailAuthService.recommendedWebClientId}\n\n'
+                                'Package: ${GmailAuthService.androidPackageName}\n'
+                                'SHA-1 debug: ${GmailAuthService.debugSha1Fingerprint}\n\n'
+                                'Alternativa: Gmail SaaS (arriba) o '
+                                'https://rol-pagos-admin.vercel.app/gmail',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onErrorContainer,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(
@@ -91,101 +110,92 @@ class SettingsScreen extends ConsumerWidget {
                       title: Text(
                         gmailState.isConnected
                             ? 'Conectado: ${gmailState.connectedEmail ?? ''}'
-                            : 'No conectado',
+                            : 'No conectado (local)',
                       ),
                       subtitle: Text(
                         gmailState.isConnected
-                            ? 'Puedes sincronizar adjuntos PDF del remitente configurado.'
-                            : gmailState.isConfigured
-                                ? 'Toca “Conectar Gmail” para autorizar el acceso (solo lectura).'
-                                : 'Google Sign-In no está configurado aún para Gmail.',
+                            ? 'Sincronización local activa.'
+                            : 'El remitente se configura en la tarjeta de arriba. '
+                                  'Si ves “Account reauth failed”, usa el panel web.',
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'En Google Cloud Console crea un cliente OAuth de tipo “Web application” y pega aquí su ID. '
-                      'Añade también el tipo Android con package com.rolhoras.rol_pagos_app y el SHA-1 de firma (debug/release). '
-                      'Opcional: compilar con dart-define GMAIL_SERVER_CLIENT_ID.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 12),
-                    _GmailOAuthClientIdSection(
-                      hasServerClientIdConfigured: gmailState.isConfigured,
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      key: ValueKey(gmailState.gmailPrefsLoaded),
-                      initialValue: gmailState.senderFilter ?? '',
-                      decoration: const InputDecoration(
-                        labelText: 'Correo del remitente (quien envía el rol)',
-                        helperText:
-                            'Ej. RecursosHumanos.Nomina@vicunha.com.ec',
-                        prefixIcon: Icon(Icons.alternate_email),
-                      ),
-                      onChanged: (v) => controller.setSenderFilter(v),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: const Text('OAuth / conectar en el teléfono'),
                       children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: !gmailState.isConfigured
-                                ? null
-                                : gmailState.isConnected
-                                ? () => controller.disconnect()
-                                : () => controller.connect(),
-                            icon: Icon(
-                              gmailState.isConnected
-                                  ? Icons.logout_outlined
-                                  : Icons.login_outlined,
-                            ),
-                            label: Text(
-                              gmailState.isConnected
-                                  ? 'Desconectar'
-                                  : 'Conectar Gmail',
-                            ),
-                          ),
+                        _GmailOAuthClientIdSection(
+                          hasServerClientIdConfigured: gmailState.isConfigured,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed:
-                                gmailState.isConnected && !gmailState.isSyncing
-                                ? () => controller.syncNow()
-                                : null,
-                            icon: gmailState.isSyncing
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.sync),
-                            label: Text(
-                              gmailState.isSyncing
-                                  ? 'Sincronizando…'
-                                  : 'Sincronizar',
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: !gmailState.isConfigured
+                                    ? null
+                                    : gmailState.isConnected
+                                    ? () => controller.disconnect()
+                                    : () => controller.connect(),
+                                icon: Icon(
+                                  gmailState.isConnected
+                                      ? Icons.logout_outlined
+                                      : Icons.login_outlined,
+                                ),
+                                label: Text(
+                                  gmailState.isConnected
+                                      ? 'Desconectar'
+                                      : 'Conectar Gmail',
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed:
+                                    gmailState.isConnected &&
+                                        !gmailState.isSyncing
+                                    ? () => controller.syncNow()
+                                    : null,
+                                icon: gmailState.isSyncing
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.sync),
+                                label: Text(
+                                  gmailState.isSyncing
+                                      ? 'Sincronizando…'
+                                      : 'Sincronizar',
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: gmailState.autoSyncEnabled,
                       onChanged: gmailState.isConnected
                           ? (v) => controller.setAutoSyncEnabled(v)
                           : null,
-                      title: const Text(
-                        'Sincronización automática (foreground + background)',
-                      ),
+                      title: const Text('Sincronización automática local'),
                       subtitle: const Text(
-                        'Ejecuta cada 6 horas mientras la app está abierta. '
-                        'En Android también programa ejecución en segundo plano.',
+                        'Cada 6 horas en el teléfono (menos fiable que el backend).',
                       ),
                     ),
+                    if (gmailState.lastResultMessage != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        gmailState.lastResultMessage!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ],
                     FutureBuilder<DateTime?>(
                       future: storage.getGmailLastBackgroundSyncAt(),
                       builder: (context, snapshot) {
@@ -200,170 +210,20 @@ class SettingsScreen extends ConsumerWidget {
                         );
                       },
                     ),
-                    FutureBuilder<String?>(
-                      future: storage.getGmailLastBackgroundSyncResult(),
-                      builder: (context, snapshot) {
-                        final msg = snapshot.data;
-                        if (msg == null) return const SizedBox.shrink();
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            msg,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        );
-                      },
-                    ),
-                    if (gmailState.lastResultMessage != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        gmailState.lastResultMessage!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: gmailState.isConnected
-                            ? () async {
-                                // Registrar/cancelar según toggle actual.
-                                final enabled =
-                                    await storage.getGmailAutoSyncEnabled();
-                                if (enabled) {
-                                  await BackgroundTasks.registerGmailSync();
-                                  rootScaffoldMessengerKey.currentState
-                                      ?.showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Sync en segundo plano programado (Android)',
-                                      ),
-                                    ),
-                                  );
-                                } else {
-                                  await BackgroundTasks.cancelGmailSync();
-                                  rootScaffoldMessengerKey.currentState
-                                      ?.showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Sync en segundo plano desactivado',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              }
-                            : null,
-                        icon: const Icon(Icons.schedule),
-                        label: const Text('Aplicar programación en segundo plano'),
-                      ),
-                    ),
                   ],
                 );
               },
-            ),
-          ),
-          const SizedBox(height: 20),
-          SectionCard(
-            title: 'Remitente por defecto (base local)',
-            subtitle:
-                'Valor sembrado en la base de datos. El remitente activo para Gmail lo configuras arriba.',
-            child: userSettingsAsync.when(
-              data: (row) {
-                if (row == null) {
-                  return const ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.mail_outline),
-                    title: Text('Sin registro de configuración'),
-                    subtitle: Text(
-                      'Reinicia la app; debería crearse al abrir la base de datos.',
-                    ),
-                  );
-                }
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.mail_outline),
-                  title: Text(row.gmailSenderFilter),
-                  subtitle: const Text(
-                    'Edición de este campo en BD puede añadirse en una fase posterior.',
-                  ),
-                );
-              },
-              loading: () => const ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.mail_outline),
-                title: Text('Cargando…'),
-              ),
-              error: (e, _) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.error_outline),
-                title: Text('Error: $e'),
-              ),
             ),
           ),
         ],
       ),
     );
   }
-
-  Future<void> _setPassword(BuildContext context, WidgetRef ref) async {
-    final password = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => const _SettingsPdfPasswordDialog(),
-    );
-
-    if (password == null) return;
-    if (!context.mounted) return;
-
-    await ref.read(secureStorageServiceProvider).savePdfPassword(password);
-    ref.invalidate(pdfPasswordExistsProvider);
-
-    if (!context.mounted) return;
-    rootScaffoldMessengerKey.currentState?.showSnackBar(
-      const SnackBar(content: Text('Contraseña guardada de forma segura')),
-    );
-  }
-
-  Future<void> _deletePassword(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Eliminar contraseña'),
-          content: const Text(
-            'Se eliminará la contraseña guardada. Luego tendrás que ingresarla manualmente para procesar PDFs.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Eliminar'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) return;
-    if (!context.mounted) return;
-
-    await ref.read(secureStorageServiceProvider).deletePdfPassword();
-    ref.invalidate(pdfPasswordExistsProvider);
-
-    if (!context.mounted) return;
-    rootScaffoldMessengerKey.currentState?.showSnackBar(
-      const SnackBar(content: Text('Contraseña eliminada')),
-    );
-  }
 }
 
 /// Campo para OAuth Web Client ID guardado de forma segura (no requiere recompilar APK).
 class _GmailOAuthClientIdSection extends ConsumerStatefulWidget {
-  const _GmailOAuthClientIdSection({
-    required this.hasServerClientIdConfigured,
-  });
+  const _GmailOAuthClientIdSection({required this.hasServerClientIdConfigured});
 
   final bool hasServerClientIdConfigured;
 
@@ -398,37 +258,50 @@ class _GmailOAuthClientIdSectionState
   }
 
   Future<void> _save() async {
-    final raw = _controller.text.trim();
-    if (raw.isEmpty) {
+    final normalized = normalizeOAuthWebClientId(_controller.text);
+    if (normalized == null || normalized.isEmpty) {
       rootScaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(content: Text('Pega el OAuth Web Client ID')),
       );
       return;
     }
-    if (!looksLikeOAuthWebClientId(raw)) {
+    if (!looksLikeOAuthWebClientId(normalized)) {
       rootScaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(
           content: Text(
-            'El ID no parece un Client ID Web (debe terminar en .apps.googleusercontent.com). '
-            'Si es correcto igualmente, vuelve a guardar tras revisar.',
+            'El ID no parece un Client ID Web (debe terminar en '
+            '.apps.googleusercontent.com y NO empezar con https://).',
           ),
         ),
       );
+      return;
     }
+    _controller.text = normalized;
     final storage = ref.read(secureStorageServiceProvider);
-    await storage.setGmailServerClientId(raw);
-    await ref.read(gmailSyncControllerProvider.notifier).reloadGmailConfiguration();
+    await storage.setGmailServerClientId(normalized);
+    await ref
+        .read(gmailSyncControllerProvider.notifier)
+        .reloadGmailConfiguration();
     if (!mounted) return;
     rootScaffoldMessengerKey.currentState?.showSnackBar(
-      const SnackBar(content: Text('Client ID guardado. Ya puedes usar Conectar Gmail')),
+      const SnackBar(
+        content: Text('Client ID guardado. Ya puedes pulsar “Conectar Gmail”.'),
+      ),
     );
+  }
+
+  Future<void> _useRecommended() async {
+    _controller.text = GmailAuthService.recommendedWebClientId;
+    await _save();
   }
 
   Future<void> _clear() async {
     final storage = ref.read(secureStorageServiceProvider);
     await storage.deleteGmailServerClientId();
     _controller.clear();
-    await ref.read(gmailSyncControllerProvider.notifier).reloadGmailConfiguration();
+    await ref
+        .read(gmailSyncControllerProvider.notifier)
+        .reloadGmailConfiguration();
     if (!mounted) return;
     rootScaffoldMessengerKey.currentState?.showSnackBar(
       const SnackBar(content: Text('Client ID eliminado')),
@@ -451,6 +324,12 @@ class _GmailOAuthClientIdSectionState
           ),
         ),
         const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _useRecommended,
+          icon: const Icon(Icons.auto_fix_high_outlined),
+          label: const Text('Usar Client ID de rol-pagos-saas'),
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
@@ -461,44 +340,39 @@ class _GmailOAuthClientIdSectionState
               ),
             ),
             const SizedBox(width: 10),
-            OutlinedButton(
-              onPressed: _clear,
-              child: const Text('Borrar'),
-            ),
+            OutlinedButton(onPressed: _clear, child: const Text('Borrar')),
           ],
         ),
         const SizedBox(height: 4),
         Text(
           widget.hasServerClientIdConfigured
               ? 'Client ID cargado correctamente.'
-              : 'Sin Client ID: “Conectar Gmail” permanecerá deshabilitado hasta guardar.',
+              : 'Sin Client ID: pulsa “Usar Client ID de rol-pagos-saas” o pégalo y guarda.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
   }
 }
 
-class _SettingsPdfPasswordDialog extends StatefulWidget {
-  const _SettingsPdfPasswordDialog();
+/// Remitente editable (antes era solo lectura con texto "fase posterior").
+class _EditableSenderSection extends ConsumerStatefulWidget {
+  const _EditableSenderSection({required this.userSettingsAsync});
+
+  final AsyncValue<UserSettingsTableData?> userSettingsAsync;
 
   @override
-  State<_SettingsPdfPasswordDialog> createState() =>
-      _SettingsPdfPasswordDialogState();
+  ConsumerState<_EditableSenderSection> createState() =>
+      _EditableSenderSectionState();
 }
 
-class _SettingsPdfPasswordDialogState
-    extends State<_SettingsPdfPasswordDialog> {
-  late final TextEditingController _controller;
-  final _formKey = GlobalKey<FormState>();
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController();
-  }
+class _EditableSenderSectionState
+    extends ConsumerState<_EditableSenderSection> {
+  final _controller = TextEditingController();
+  var _loadedKey = '';
+  var _saving = false;
 
   @override
   void dispose() {
@@ -506,42 +380,229 @@ class _SettingsPdfPasswordDialogState
     super.dispose();
   }
 
+  Future<void> _save() async {
+    final value = _controller.text.trim();
+    if (value.isEmpty) {
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('Ingresa el correo del remitente')),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final db = ref.read(appDatabaseProvider);
+      await db.userSettingsDao.updateGmailSenderFilter(value);
+      await ref
+          .read(gmailSyncControllerProvider.notifier)
+          .setSenderFilter(value);
+      if (!mounted) return;
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('Remitente guardado')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Guardar contraseña del PDF'),
-      content: Form(
-        key: _formKey,
-        child: TextFormField(
-          controller: _controller,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Contraseña',
-            hintText: 'No se mostrará en pantalla',
+    return SectionCard(
+      title: 'Remitente del rol',
+      subtitle: 'Correo de quien envía el PDF (nómina), no tu Gmail personal.',
+      child: widget.userSettingsAsync.when(
+        data: (row) {
+          final current = row?.gmailSenderFilter ?? '';
+          if (_loadedKey != current) {
+            _loadedKey = current;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              if (_controller.text != current) {
+                _controller.text = current;
+              }
+            });
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _controller,
+                decoration: const InputDecoration(
+                  labelText: 'Correo del remitente',
+                  hintText: 'ej. nomina@empresa.com',
+                  prefixIcon: Icon(Icons.alternate_email),
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.emailAddress,
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(_saving ? 'Guardando…' : 'Guardar remitente'),
+              ),
+            ],
+          );
+        },
+        loading: () => const LinearProgressIndicator(),
+        error: (e, _) => Text('$e'),
+      ),
+    );
+  }
+}
+
+/// Contraseña del PDF visible en pantalla (antes solo se abría por diálogo).
+class _PdfPasswordSection extends ConsumerStatefulWidget {
+  const _PdfPasswordSection();
+
+  @override
+  ConsumerState<_PdfPasswordSection> createState() =>
+      _PdfPasswordSectionState();
+}
+
+class _PdfPasswordSectionState extends ConsumerState<_PdfPasswordSection> {
+  final _controller = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  var _obscure = true;
+  var _saving = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(secureStorageServiceProvider)
+          .savePdfPassword(_controller.text);
+      ref.invalidate(pdfPasswordExistsProvider);
+      _controller.clear();
+      if (!mounted) return;
+      rootScaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('Contraseña guardada de forma segura')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Eliminar contraseña'),
+          content: const Text(
+            'Se eliminará la contraseña guardada. Luego tendrás que ingresarla '
+            'de nuevo para procesar PDFs protegidos.',
           ),
-          validator: (value) {
-            if ((value ?? '').trim().isEmpty) {
-              return 'Ingresa la contraseña';
-            }
-            return null;
-          },
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    await ref.read(secureStorageServiceProvider).deletePdfPassword();
+    ref.invalidate(pdfPasswordExistsProvider);
+    if (!mounted) return;
+    rootScaffoldMessengerKey.currentState?.showSnackBar(
+      const SnackBar(content: Text('Contraseña eliminada')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final passwordExistsAsync = ref.watch(pdfPasswordExistsProvider);
+
+    return SectionCard(
+      title: 'Contraseña del PDF',
+      subtitle:
+          'Escríbela aquí. Se guarda en almacenamiento seguro del teléfono.',
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            passwordExistsAsync.when(
+              data: (exists) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  exists ? Icons.lock_outline : Icons.lock_open_outlined,
+                ),
+                title: Text(exists ? 'Contraseña guardada' : 'Sin contraseña'),
+                subtitle: Text(
+                  exists
+                      ? 'Ya puedes procesar roles protegidos'
+                      : 'Ingresa la contraseña del PDF de nómina',
+                ),
+                trailing: exists
+                    ? OutlinedButton(
+                        onPressed: _delete,
+                        child: const Text('Eliminar'),
+                      )
+                    : null,
+              ),
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) => Text('$e'),
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _controller,
+              obscureText: _obscure,
+              decoration: InputDecoration(
+                labelText: 'Contraseña del PDF',
+                hintText: 'La que pide el archivo al abrirlo',
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.password_outlined),
+                suffixIcon: IconButton(
+                  tooltip: _obscure ? 'Mostrar' : 'Ocultar',
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                  icon: Icon(
+                    _obscure
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                ),
+              ),
+              validator: (value) {
+                if ((value ?? '').trim().isEmpty) {
+                  return 'Ingresa la contraseña';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined),
+              label: Text(_saving ? 'Guardando…' : 'Guardar contraseña'),
+            ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (!_formKey.currentState!.validate()) {
-              return;
-            }
-            Navigator.of(context).pop(_controller.text);
-          },
-          child: const Text('Guardar'),
-        ),
-      ],
     );
   }
 }

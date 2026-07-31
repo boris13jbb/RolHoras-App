@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import 'gmail_config_resolver.dart';
+
 /// Servicio de autenticación Gmail basado en OAuth (Google Sign-In).
 ///
 /// En Android (`google_sign_in` >= 7), para scopes de servidor como Gmail suele
@@ -24,6 +26,15 @@ class GmailAuthService {
   /// Package de la app Android en `build.gradle.kts` (requerido en Google Cloud).
   static const String androidPackageName = 'com.rolhoras.rol_pagos_app';
 
+  /// SHA-1 del keystore debug local (para cliente OAuth Android).
+  static const String debugSha1Fingerprint =
+      'FA:BA:45:3F:E3:71:8A:26:10:4B:3B:A7:7F:96:7E:10:4D:6C:B2:51';
+
+  /// Client ID Web (type 3) del proyecto Firebase `rol-pagos-saas-b7b04`.
+  /// Debe usarse como `serverClientId` en Android para scopes de Gmail.
+  static const String recommendedWebClientId =
+      '398451651219-6lblq3morscifre6ka35jmtk01db4k0l.apps.googleusercontent.com';
+
   final GoogleSignIn _googleSignIn;
 
   GoogleSignInAccount? _currentUser;
@@ -32,17 +43,17 @@ class GmailAuthService {
   /// duplicar listeners al invalidar providers.
   StreamSubscription<GoogleSignInAuthenticationEvent>? _authSubscription;
 
-  Stream<GoogleSignInAccount?> get onCurrentUserChanged =>
-      _googleSignIn.authenticationEvents
-          .map((event) {
-            return switch (event) {
-              GoogleSignInAuthenticationEventSignIn() => event.user,
-              GoogleSignInAuthenticationEventSignOut() => null,
-            };
-          })
-          // El plugin hace `addError` al stream antes de relanzar; sin esto aparece
-          // «Unhandled asynchronous error» aun cuando el Future se captura.
-          .handleError((Object _) {});
+  Stream<GoogleSignInAccount?> get onCurrentUserChanged => _googleSignIn
+      .authenticationEvents
+      .map((event) {
+        return switch (event) {
+          GoogleSignInAuthenticationEventSignIn() => event.user,
+          GoogleSignInAuthenticationEventSignOut() => null,
+        };
+      })
+      // El plugin hace `addError` al stream antes de relanzar; sin esto aparece
+      // «Unhandled asynchronous error» aun cuando el Future se captura.
+      .handleError((Object _) {});
 
   void _wireAuthenticationEventsListener() {
     _authSubscription = _googleSignIn.authenticationEvents.listen(
@@ -65,7 +76,7 @@ class GmailAuthService {
 
   /// [serverClientId]: Cliente OAuth tipo **Web application** (Console Google Cloud).
   Future<void> initialize({String? serverClientId}) async {
-    final trimmed = serverClientId?.trim() ?? '';
+    final trimmed = normalizeOAuthWebClientId(serverClientId) ?? '';
     await _authSubscription?.cancel();
     _authSubscription = null;
 
@@ -79,7 +90,8 @@ class GmailAuthService {
   /// se tratan como “sin sesión” para no dejar excepciones sin capturar.
   Future<GoogleSignInAccount?> tryRestoreSession() async {
     try {
-      final lightweightFuture = _googleSignIn.attemptLightweightAuthentication();
+      final lightweightFuture = _googleSignIn
+          .attemptLightweightAuthentication();
       // Importante: el Future devuelve la cuenta restaurada; no basta con leer
       // _currentUser (el listener puede ir un frame detrás o no dispararse aún).
       if (lightweightFuture != null) {
@@ -150,12 +162,21 @@ String _describeGoogleSignInFailure(GoogleSignInException e) {
   final raw = e.toString();
   final lower = raw.toLowerCase();
   if (lower.contains('28444') ||
-      lower.contains('developer console is not set up')) {
-    return 'Google Cloud no reconoce esta app en Android. En Credenciales, crea un '
-        'ID de cliente OAuth tipo Android con package ${GmailAuthService.androidPackageName} '
-        'y el SHA-1 del keystore de firma (debug: en android/ ejecuta '
-        'gradlew signingReport y copia SHA-1). El Web Client ID que pegas en la app '
-        'debe ser del mismo proyecto que ese cliente Android. Detalle: $raw';
+      lower.contains('developer console is not set up') ||
+      lower.contains('account reauth failed') ||
+      lower.contains('[16]')) {
+    return 'Google Sign-In en Android no está alineado con el proyecto OAuth. '
+        'Proyecto Firebase: rol-pagos-saas-b7b04.\n'
+        '1) Google Cloud → Credenciales → cliente OAuth tipo Android\n'
+        '2) Package: ${GmailAuthService.androidPackageName}\n'
+        '3) SHA-1 debug: ${GmailAuthService.debugSha1Fingerprint}\n'
+        '4) Crea/usa un Client ID Web del MISMO proyecto y pégalo en Ajustes\n'
+        '5) Vuelve a descargar google-services.json (debe incluir oauth_client)\n'
+        'Mientras tanto usa el panel web: https://rol-pagos-admin.vercel.app/gmail';
+  }
+  if (lower.contains('canceled') || lower.contains('cancelled')) {
+    return 'Inicio de sesión cancelado. Si no cancelaste tú, revisa el cliente '
+        'Android OAuth (package + SHA-1) o usa https://rol-pagos-admin.vercel.app/gmail';
   }
   return raw;
 }

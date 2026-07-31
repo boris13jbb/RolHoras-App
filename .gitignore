@@ -1,0 +1,60 @@
+# Entornos y secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.key
+
+# Google / OAuth / Firebase
+**/client_secret*.json
+**/*apps.googleusercontent.com.json
+**/google-services.json
+**/GoogleService-Info.plist
+**/service-account*.json
+**/credentials.json
+
+# Datos personales / roles reales
+**/*_unlocked.pdf
+**/V0*.pdf
+**/MARZO.png
+**/ABRIL.png
+*.apk
+h.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+dist/
+*.egg-info/
+
+# Node / Vercel
+node_modules/
+.next/
+out/
+.turbo/
+.vercel/
+**/.vercel/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Flutter (también en rol_pagos_app/.gitignore)
+**/build/
+**/.dart_tool/
+**/.flutter-plugins-dependencies
+
+# Local storage / uploads
+.tmp/
+storage/
+uploads/
