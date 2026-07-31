@@ -96,6 +96,10 @@ async def gmail_status(
 @router.post("/integrations/gmail/sync", response_model=GmailSyncResponse)
 async def gmail_sync(
     organization_id: str = Query(...),
+    full: bool = Query(
+        False,
+        description="Si true, reescanea el buzón (necesario tras cambiar remitente).",
+    ),
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     service: GmailIntegrationService = Depends(_service),
@@ -117,11 +121,18 @@ async def gmail_sync(
     conn = result.scalar_one_or_none()
     if conn is None:
         raise HTTPException(status_code=404, detail={"code": "not_connected", "message": "Gmail no conectado"})
-    imported = await service.sync_connection(conn.id, full=False)
+    # Tras conectar, historyId existe; sin filtro de remitente un sync incremental
+    # puede devolver 0. Forzar full cuando el cliente lo pide o no hay filtro aún.
+    do_full = full or not bool(conn.sender_filter)
+    imported = await service.sync_connection(conn.id, full=do_full)
+    mode = "completa" if do_full else "incremental"
     return GmailSyncResponse(
         status="ok",
         documents_imported=imported,
-        message=f"Sincronización completada. Documentos nuevos: {imported}",
+        message=(
+            f"Sincronización {mode} completada. Documentos nuevos: {imported}. "
+            f"Remitente: {conn.sender_filter or 'sin filtro'}"
+        ),
     )
 
 

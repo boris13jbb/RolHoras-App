@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/providers/app_database_provider.dart';
 import '../application/saas_providers.dart';
 import '../../../services/rol_pagos_api_client.dart';
 import '../../../shared/widgets/section_card.dart';
@@ -18,13 +19,15 @@ class _SaasGmailSectionState extends ConsumerState<SaasGmailSection> {
   String? _statusLabel;
   String? _error;
   bool _loading = false;
+  bool _autoReady = false;
 
   Future<void> _refreshStatus() async {
     final config = await ref.read(saasConfigProvider.future);
     if (!config.isReady) {
       setState(() {
-        _statusLabel = 'Sin sesión SaaS configurada';
+        _statusLabel = 'Sin sesión SaaS. Pulsa “Sesión API” y pega token + organización.';
         _error = null;
+        _autoReady = false;
       });
       return;
     }
@@ -35,13 +38,26 @@ class _SaasGmailSectionState extends ConsumerState<SaasGmailSection> {
     try {
       final client = ref.read(rolPagosApiClientProvider);
       final status = await client.gmailStatus(organizationId: config.organizationId!);
+      final filters = await client.getGmailFilters(organizationId: config.organizationId!);
+      final connected = status['connected'] == true ||
+          (status['status']?.toString() == 'active');
+      final sender = filters['sender_filter']?.toString();
+      final watch = status['watch_expiration']?.toString();
       setState(() {
-        _statusLabel =
-            '${status['status']} · ${status['email_address'] ?? 'sin correo'}';
+        _autoReady = connected && (sender != null && sender.isNotEmpty);
+        _statusLabel = [
+          '${status['status'] ?? 'desconocido'} · ${status['email_address'] ?? 'sin correo'}',
+          if (sender != null && sender.isNotEmpty) 'Remitente servidor: $sender',
+          if (sender == null || sender.isEmpty)
+            'Falta remitente en servidor → pulsa “Activar automático”',
+          if (watch != null && watch.isNotEmpty) 'Watch: $watch',
+          if (_autoReady)
+            'Automático listo: el servidor reconciliará periódicamente.',
+        ].join('\n');
       });
     } on RolPagosApiException catch (e) {
-      setState(() => _error = 'Error API (${e.statusCode})');
-    } catch (e) {
+      setState(() => _error = 'Error API (${e.statusCode}): ${e.body}');
+    } catch (_) {
       setState(() => _error = 'No se pudo consultar el estado de Gmail');
     } finally {
       setState(() => _loading = false);
@@ -51,7 +67,7 @@ class _SaasGmailSectionState extends ConsumerState<SaasGmailSection> {
   Future<void> _connect() async {
     final config = await ref.read(saasConfigProvider.future);
     if (!config.isReady) {
-      setState(() => _error = 'Configura URL, token y organización en almacenamiento seguro');
+      setState(() => _error = 'Configura URL, token y organización en “Sesión API”');
       return;
     }
     setState(() {
@@ -80,18 +96,72 @@ class _SaasGmailSectionState extends ConsumerState<SaasGmailSection> {
     }
   }
 
-  Future<void> _sync() async {
+  Future<void> _sync({bool full = false}) async {
     final config = await ref.read(saasConfigProvider.future);
     if (!config.isReady) return;
     setState(() => _loading = true);
     try {
       final client = ref.read(rolPagosApiClientProvider);
-      final result = await client.gmailSync(organizationId: config.organizationId!);
+      final result = await client.gmailSync(
+        organizationId: config.organizationId!,
+        full: full,
+      );
       setState(() => _statusLabel = result['message']?.toString() ?? 'Sincronizado');
+    } on RolPagosApiException catch (e) {
+      setState(() => _error = 'Error al sincronizar (${e.statusCode})');
     } catch (_) {
       setState(() => _error = 'Error al sincronizar');
     } finally {
       setState(() => _loading = false);
+    }
+  }
+
+  /// Copia el remitente local al servidor y fuerza sync completa.
+  Future<void> _activateAutomatic() async {
+    final config = await ref.read(saasConfigProvider.future);
+    if (!config.isReady) {
+      setState(() => _error = 'Primero configura “Sesión API” (token + organización).');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final db = ref.read(appDatabaseProvider);
+      final settings = await db.userSettingsDao.getSettings();
+      final sender = (settings?.gmailSenderFilter ?? '').trim();
+      if (sender.isEmpty) {
+        setState(() {
+          _error =
+              'Guarda primero el “Correo del remitente” (ej. umanos.Nomina@vicunha.com.ec).';
+        });
+        return;
+      }
+      final client = ref.read(rolPagosApiClientProvider);
+      final filters = await client.updateGmailFilters(
+        organizationId: config.organizationId!,
+        senderFilter: sender,
+      );
+      final imported = filters['documents_imported'];
+      setState(() {
+        _statusLabel =
+            'Automático activado.\nRemitente: $sender\n'
+            'Importados en este escaneo: ${imported ?? 0}\n'
+            'El servidor seguirá buscando correos nuevos en segundo plano.';
+        _autoReady = true;
+      });
+    } on RolPagosApiException catch (e) {
+      final body = e.body.toLowerCase();
+      if (e.statusCode == 404 || body.contains('not_connected')) {
+        setState(() => _error = 'Conecta Gmail SaaS primero (botón Conectar Gmail).');
+      } else {
+        setState(() => _error = 'No se pudo activar automático (${e.statusCode})');
+      }
+    } catch (_) {
+      setState(() => _error = 'No se pudo activar el modo automático');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -113,9 +183,18 @@ class _SaasGmailSectionState extends ConsumerState<SaasGmailSection> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Text(
+                'Obtén token y Organization ID en '
+                'https://rol-pagos-admin.vercel.app/login',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: baseCtrl,
-                decoration: const InputDecoration(labelText: 'URL API'),
+                decoration: const InputDecoration(
+                  labelText: 'URL API',
+                  hintText: 'https://rolpagos-api.onrender.com',
+                ),
               ),
               TextField(
                 controller: tokenCtrl,
@@ -157,15 +236,18 @@ class _SaasGmailSectionState extends ConsumerState<SaasGmailSection> {
     return SectionCard(
       title: 'SaaS · Gmail automático (recomendado)',
       subtitle:
-          'Usa esta opción. OAuth offline en la API; la descarga sigue con la app cerrada. '
-          'El Gmail local del teléfono es opcional y ya está alineado con rol-pagos-saas-b7b04.',
+          'Descarga en el servidor sin depender del teléfono. '
+          '1) Sesión API  2) Conectar Gmail  3) Activar automático.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.cloud_sync_outlined),
-            title: const Text('Estado en servidor'),
+            leading: Icon(
+              _autoReady ? Icons.verified_outlined : Icons.cloud_sync_outlined,
+              color: _autoReady ? Theme.of(context).colorScheme.primary : null,
+            ),
+            title: Text(_autoReady ? 'Automático activo' : 'Estado en servidor'),
             subtitle: Text(_error ?? _statusLabel ?? 'Sin datos'),
           ),
           if (_loading) const LinearProgressIndicator(),
@@ -175,9 +257,22 @@ class _SaasGmailSectionState extends ConsumerState<SaasGmailSection> {
             runSpacing: 8,
             children: [
               OutlinedButton(onPressed: _editConfig, child: const Text('Sesión API')),
-              FilledButton(onPressed: _loading ? null : _connect, child: const Text('Conectar Gmail')),
-              OutlinedButton(onPressed: _loading ? null : _sync, child: const Text('Sincronizar ahora')),
-              OutlinedButton(onPressed: _loading ? null : _refreshStatus, child: const Text('Actualizar')),
+              FilledButton(
+                onPressed: _loading ? null : _connect,
+                child: const Text('Conectar Gmail'),
+              ),
+              FilledButton.tonal(
+                onPressed: _loading ? null : _activateAutomatic,
+                child: const Text('Activar automático'),
+              ),
+              OutlinedButton(
+                onPressed: _loading ? null : () => _sync(full: true),
+                child: const Text('Sincronizar ahora'),
+              ),
+              OutlinedButton(
+                onPressed: _loading ? null : _refreshStatus,
+                child: const Text('Actualizar'),
+              ),
             ],
           ),
         ],

@@ -7,10 +7,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import Settings, get_settings
 from app.db.session import get_db
 from app.models import GmailConnection, PdfSecret
 from app.security.auth import AuthUser, TokenCipher, get_current_user, get_token_cipher, require_org_membership
 from app.services.audit import record_audit
+from app.services.gmail_client import HttpGmailClient
+from app.services.gmail_service import GmailIntegrationService
 
 router = APIRouter(tags=["settings"])
 
@@ -33,6 +36,7 @@ class GmailFiltersOut(BaseModel):
     subject_pattern: str | None = None
     connected: bool = False
     email_address: str | None = None
+    documents_imported: int | None = None
 
 
 @router.get("/settings/pdf-password", response_model=PdfPasswordStatus)
@@ -152,6 +156,8 @@ async def update_gmail_filters(
     organization_id: uuid.UUID = Query(...),
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    cipher: TokenCipher = Depends(get_token_cipher),
 ):
     await require_org_membership(organization_id, user, db)
     conn = (
@@ -184,9 +190,16 @@ async def update_gmail_filters(
         resource_id=str(conn.id),
         metadata={"has_sender_filter": bool(conn.sender_filter)},
     )
+    imported = 0
+    try:
+        service = GmailIntegrationService(db, settings, cipher, HttpGmailClient(settings))
+        imported = await service.sync_connection(conn.id, full=True)
+    except Exception:
+        imported = 0
     return GmailFiltersOut(
         sender_filter=conn.sender_filter,
         subject_pattern=conn.subject_pattern,
         connected=True,
         email_address=conn.email_address,
+        documents_imported=imported,
     )

@@ -10,6 +10,7 @@ import '../../../data/local/app_database.dart';
 import '../../../services/gmail_auth_service.dart';
 import '../../../services/gmail_config_resolver.dart';
 import '../../gmail/application/gmail_providers.dart';
+import '../../saas/application/saas_providers.dart';
 import '../../saas/presentation/saas_gmail_section.dart';
 import '../../../shared/layouts/app_scaffold.dart';
 import '../../../shared/widgets/section_card.dart';
@@ -395,6 +396,29 @@ class _EditableSenderSectionState
       await ref
           .read(gmailSyncControllerProvider.notifier)
           .setSenderFilter(value);
+      // Si hay sesión SaaS, copia el remitente al servidor y reescanea.
+      final saas = await ref.read(saasConfigProvider.future);
+      if (saas.isReady) {
+        try {
+          final client = ref.read(rolPagosApiClientProvider);
+          final result = await client.updateGmailFilters(
+            organizationId: saas.organizationId!,
+            senderFilter: value,
+          );
+          if (!mounted) return;
+          rootScaffoldMessengerKey.currentState?.showSnackBar(
+            SnackBar(
+              content: Text(
+                'Remitente guardado en app y servidor '
+                '(+${result['documents_imported'] ?? 0} docs).',
+              ),
+            ),
+          );
+          return;
+        } catch (_) {
+          // No bloquear guardado local si el servidor falla.
+        }
+      }
       if (!mounted) return;
       rootScaffoldMessengerKey.currentState?.showSnackBar(
         const SnackBar(content: Text('Remitente guardado')),

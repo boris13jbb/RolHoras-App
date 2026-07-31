@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     # En tests / desarrollo se puede desactivar validación JWT real
     auth_disabled_for_tests: bool = False
 
+    # Bootstrap de desarrollo (panel/Flutter) aunque APP_ENV=production en beta.
+    enable_dev_bootstrap: bool = False
+
+    # Token para cron/reconciliación (header X-Internal-Token).
+    scheduler_secret: str = ""
+
     @property
     def cors_origin_list(self) -> List[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

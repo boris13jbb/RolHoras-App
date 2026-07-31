@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,17 +14,33 @@ from app.services.gmail_service import GmailIntegrationService
 router = APIRouter(tags=["internal"])
 
 
-def _verify_scheduler(authorization: str | None, settings: Settings) -> None:
-    """Protección mínima para Scheduler/Cloud Tasks.
+def _verify_scheduler(
+    authorization: str | None,
+    x_internal_token: str | None,
+    settings: Settings,
+) -> None:
+    """Autoriza jobs de reconciliación / renovación de watch.
 
-    En producción debe validarse OIDC de Google. En desarrollo se acepta
-    el header `X-Internal-Token` comparado con SUPABASE_JWT_SECRET.
+    Preferido: `X-Internal-Token` == SCHEDULER_SECRET (cron Render / Cloud Scheduler).
+    Alternativa en no-producción: Bearer presente (OIDC pendiente de endurecer).
     """
-    if settings.app_env == "production":
-        if not authorization or not authorization.lower().startswith("bearer "):
-            raise HTTPException(status_code=401, detail={"code": "unauthorized", "message": "OIDC requerido"})
+    expected = (settings.scheduler_secret or settings.supabase_jwt_secret or "").strip()
+    if expected and x_internal_token and x_internal_token.strip() == expected:
         return
-    # desarrollo: sin OIDC obligatorio
+    if settings.app_env == "production":
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "unauthorized",
+                "message": "Se requiere X-Internal-Token válido (SCHEDULER_SECRET)",
+            },
+        )
+    # desarrollo: permitir sin token si no hay secreto configurado
+    if expected and x_internal_token and x_internal_token.strip() != expected:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "unauthorized", "message": "Token interno inválido"},
+        )
 
 
 @router.post("/internal/gmail/renew-watches")
@@ -37,15 +51,17 @@ async def renew_watches(
     settings: Settings = Depends(get_settings),
     cipher: TokenCipher = Depends(get_token_cipher),
 ):
-    _verify_scheduler(authorization, settings)
-    if settings.app_env != "production" and x_internal_token and x_internal_token != settings.supabase_jwt_secret:
-        raise HTTPException(status_code=401, detail={"code": "unauthorized", "message": "Token interno inválido"})
+    _verify_scheduler(authorization, x_internal_token, settings)
 
     service = GmailIntegrationService(db, settings, cipher, HttpGmailClient(settings))
     result = await db.execute(
         select(GmailConnection).where(
             GmailConnection.status.in_(
-                [GmailConnectionStatus.active, GmailConnectionStatus.syncing, GmailConnectionStatus.error]
+                [
+                    GmailConnectionStatus.active,
+                    GmailConnectionStatus.syncing,
+                    GmailConnectionStatus.error,
+                ]
             )
         )
     )
@@ -69,12 +85,16 @@ async def reconcile_gmail(
     settings: Settings = Depends(get_settings),
     cipher: TokenCipher = Depends(get_token_cipher),
 ):
-    _verify_scheduler(authorization, settings)
+    _verify_scheduler(authorization, x_internal_token, settings)
     service = GmailIntegrationService(db, settings, cipher, HttpGmailClient(settings))
     result = await db.execute(
         select(GmailConnection).where(GmailConnection.status == GmailConnectionStatus.active)
     )
     total = 0
+    synced = 0
     for conn in result.scalars().all():
-        total += await service.sync_connection(conn.id, full=False)
-    return {"documents_imported": total}
+        # Reconciliación periódica: sync incremental; si no hay historyId, completa.
+        full = not bool(conn.history_id)
+        total += await service.sync_connection(conn.id, full=full)
+        synced += 1
+    return {"connections_synced": synced, "documents_imported": total}

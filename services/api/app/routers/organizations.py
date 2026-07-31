@@ -177,7 +177,7 @@ async def dev_bootstrap(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    if settings.app_env == "production":
+    if settings.app_env == "production" and not settings.enable_dev_bootstrap:
         raise HTTPException(status_code=404, detail={"code": "not_found", "message": "No disponible"})
 
     email = body.email.lower().strip()

@@ -46,9 +46,47 @@ class RolPagosApiClient {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> gmailSync({required String organizationId}) async {
+  Future<Map<String, dynamic>> gmailSync({
+    required String organizationId,
+    bool full = false,
+  }) async {
     final res = await _http.post(
-      _uri('/api/v1/integrations/gmail/sync', {'organization_id': organizationId}),
+      _uri('/api/v1/integrations/gmail/sync', {
+        'organization_id': organizationId,
+        if (full) 'full': 'true',
+      }),
+      headers: await _headers(),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateGmailFilters({
+    required String organizationId,
+    required String senderFilter,
+    String? subjectPattern,
+  }) async {
+    final body = <String, dynamic>{'sender_filter': senderFilter};
+    if (subjectPattern != null) {
+      body['subject_pattern'] = subjectPattern;
+    }
+    final res = await _http.put(
+      _uri('/api/v1/settings/gmail-filters', {'organization_id': organizationId}),
+      headers: {
+        ...await _headers(),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(body),
+    );
+    _ensureOk(res);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getGmailFilters({
+    required String organizationId,
+  }) async {
+    final res = await _http.get(
+      _uri('/api/v1/settings/gmail-filters', {'organization_id': organizationId}),
       headers: await _headers(),
     );
     _ensureOk(res);
