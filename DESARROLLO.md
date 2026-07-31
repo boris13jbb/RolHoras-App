@@ -77,3 +77,16 @@ Eliminar dependencia de `localhost` en el teléfono (`ERR_CONNECTION_REFUSED`).
 ### Acción humana pendiente
 Añadir en Google Cloud (cliente OAuth Web del backend) el redirect:
 `https://rolpagos-api.onrender.com/api/v1/integrations/gmail/callback`
+
+---
+
+## Actualización 2026-07-31 — Automático SaaS (remitente + cron)
+
+### Problema
+Sync devolvía “Documentos nuevos: 0” porque el filtro de remitente solo estaba en el teléfono, no en el servidor, y no había reconciliación periódica.
+
+### Solución
+- Flutter: botón **Activar automático** copia remitente a la API y fuerza sync completa.
+- API: `full=true` en sync; al guardar filtros reescanea; `X-Internal-Token` para reconcile.
+- Cron Render cada 6 h → `/api/v1/internal/gmail/reconcile`.
+- `ENABLE_DEV_BOOTSTRAP=true` para sesión beta en panel cloud.
