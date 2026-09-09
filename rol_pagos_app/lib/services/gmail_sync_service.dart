@@ -124,24 +124,51 @@ class GmailSyncService {
               await _payrollRepository.markPendingPassword(
                 payroll: payroll,
                 reason:
-                    'Pendiente contraseña: guarda la contraseña del PDF y pulsa “Procesar” o vuelve a sincronizar.',
+                    'Pendiente contraseña: guarda la contraseña del PDF y pulsa "Procesar" o vuelve a sincronizar.',
               );
               continue;
             }
 
-            final processedResult = await _payrollRepository.processPayroll(
-              payroll: payroll,
-              password: pwd,
-            );
-            if (processedResult.success) {
-              processed++;
-            } else {
+            // ✅ CORREGIDO: Validar contraseña con manejo robusto de errores
+            try {
+              final processedResult = await _payrollRepository.processPayroll(
+                payroll: payroll,
+                password: pwd,
+              );
+              if (processedResult.success) {
+                processed++;
+              } else {
+                // La contraseña fue incorrecta o falló la extracción
+                failed++;
+                // Marcar como pendingPassword para que usuario reintente con contraseña correcta
+                final errorMsg = processedResult.message ?? 'Error al procesar PDF';
+                if (errorMsg.toLowerCase().contains('contraseña') ||
+                    errorMsg.toLowerCase().contains('password')) {
+                  pendingPassword++;
+                  await _payrollRepository.markPendingPassword(
+                    payroll: payroll,
+                    reason: 'Contraseña incorrecta o PDF protegido. Detalle: $errorMsg',
+                  );
+                }
+              }
+            } catch (e, st) {
+              // Excepción inesperada durante procesamiento
               failed++;
+              // Si la excepción menciona contraseña, marcar como pendiente
+              if (e.toString().toLowerCase().contains('contraseña') ||
+                  e.toString().toLowerCase().contains('password')) {
+                pendingPassword++;
+                await _payrollRepository.markPendingPassword(
+                  payroll: payroll,
+                  reason: 'Error de contraseña o protección del PDF: $e',
+                );
+              }
             }
           } else {
             failed++;
           }
-        } catch (_) {
+        } catch (e, st) {
+          // Error en descarga o importación
           failed++;
         }
       }
