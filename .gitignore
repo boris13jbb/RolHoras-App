@@ -5,6 +5,8 @@
 *.pem
 *.p12
 *.key
+*.jks
+*.keystore
 
 # Google / OAuth / Firebase
 **/client_secret*.json
@@ -14,12 +16,18 @@
 **/service-account*.json
 **/credentials.json
 
-# Datos personales / roles reales
+# Datos personales / roles reales / escaneos privados
 **/*_unlocked.pdf
 **/V0*.pdf
+**/V0*.png
+**/q[0-9]*.pdf
+**/sa_unlocked.pdf
+**/CALCULO_HORAS_Y_CONTRATO.pdf
+rol_pagos_app/Cotrat/
 **/MARZO.png
 **/ABRIL.png
 *.apk
+*.aab
 h.zip
 
 # Python
