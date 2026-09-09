@@ -151,7 +151,7 @@ class GmailSyncService {
                   );
                 }
               }
-            } catch (e, st) {
+            } catch (e) {
               // Excepción inesperada durante procesamiento
               failed++;
               // Si la excepción menciona contraseña, marcar como pendiente
@@ -167,7 +167,7 @@ class GmailSyncService {
           } else {
             failed++;
           }
-        } catch (e, st) {
+        } catch (_) {
           // Error en descarga o importación
           failed++;
         }
