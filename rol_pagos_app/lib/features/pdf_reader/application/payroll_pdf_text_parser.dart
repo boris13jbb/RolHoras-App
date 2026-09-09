@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class PayrollPdfParseResult {
   const PayrollPdfParseResult({
     this.debtHours,
@@ -5,6 +7,7 @@ class PayrollPdfParseResult {
     this.pendingHours,
     this.periodYear,
     this.periodMonth,
+    this.extractionNotes,
   });
 
   final double? debtHours;
@@ -12,6 +15,8 @@ class PayrollPdfParseResult {
   final double? pendingHours;
   final int? periodYear;
   final int? periodMonth;
+  /// Notas del parsing (para debugging y auditoría)
+  final String? extractionNotes;
 }
 
 class PayrollPdfTextParser {
@@ -19,10 +24,17 @@ class PayrollPdfTextParser {
 
   /// Parser heurístico: intenta encontrar números cerca de palabras clave.
   /// Nunca inventa datos: si no encuentra, devuelve null.
+  /// ✅ MEJORADO: Agregado logging y validación más robusta
   PayrollPdfParseResult parse(String text) {
     final normalized = _normalize(text);
+    final notes = <String>[];
 
     final period = _findPeriod(normalized);
+    if (period != null) {
+      notes.add('Período detectado: ${period.$2}/${period.$1}');
+    } else {
+      notes.add('Período no detectado en el texto');
+    }
 
     // Vicunha / muchos roles: bloque "NOTAS HORAS" con columnas tipo
     // `-496.45  HORAS SALDO ANTERIOR` (el número va **antes** de la etiqueta).
@@ -30,12 +42,14 @@ class PayrollPdfTextParser {
     // mezclando con "Monto Aportable" (823.08), saldo actual (-368.29), etc.
     final notas = _parseNotasHorasBlock(normalized);
     if (notas != null) {
+      notes.add('Bloque NOTAS HORAS detectado');
       return PayrollPdfParseResult(
         debtHours: notas.debtHours,
         paidHours: notas.paidHours,
         pendingHours: notas.pendingHours,
         periodYear: period?.$1,
         periodMonth: period?.$2,
+        extractionNotes: notes.join('; '),
       );
     }
 
@@ -47,6 +61,7 @@ class PayrollPdfTextParser {
       RegExp(r'total\s+adeudado'),
       RegExp(r'deuda\s+de\s+horas'),
     ]);
+    if (debt != null) notes.add('Horas adeudadas: $debt');
 
     final paid = _findNumberNear(normalized, [
       RegExp(r'horas\s+pagadas'),
@@ -55,6 +70,7 @@ class PayrollPdfTextParser {
       RegExp(r'horas\s+compensan\w+'),
       RegExp(r'total\s+pagado'),
     ]);
+    if (paid != null) notes.add('Horas pagadas: $paid');
 
     // Saldo actual / pendiente en el PDF: deuda remanente (horas adeudadas), no
     // "horas a favor". Compensadas/pagadas se parsean aparte en [paid].
@@ -63,6 +79,12 @@ class PayrollPdfTextParser {
       RegExp(r'saldo\s+pendiente'),
       RegExp(r'saldo\s+actual'),
     ]);
+    if (pending != null) notes.add('Horas pendientes: $pending');
+
+    // ✅ VALIDACIÓN: Si no se detectó ningún dato, agregar nota
+    if (debt == null && paid == null && pending == null) {
+      notes.add('ADVERTENCIA: No se detectaron horas en el texto');
+    }
 
     return PayrollPdfParseResult(
       debtHours: debt,
@@ -70,6 +92,7 @@ class PayrollPdfTextParser {
       pendingHours: pending,
       periodYear: period?.$1,
       periodMonth: period?.$2,
+      extractionNotes: notes.join('; '),
     );
   }
 
@@ -159,6 +182,7 @@ class PayrollPdfTextParser {
         .toLowerCase();
   }
 
+  /// ✅ MEJORADO: Agregada validación y logs de debugging
   (int, int)? _findPeriod(String text) {
     // Prioridad 1: rango de fechas del rol, típico:
     // "Del: 1/3/2026 al 31/3/2026" (puede venir con o sin ":" y con espacios variables).
@@ -167,19 +191,31 @@ class PayrollPdfTextParser {
       r'(?:\bdel\b\s*:?\s*)(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(20\d{2})\s*(?:\bal\b)\s*(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(20\d{2})',
     ).firstMatch(text);
     if (range != null) {
-      final m1 = int.tryParse(range.group(2) ?? '');
-      final y1 = int.tryParse(range.group(3) ?? '');
-      final m2 = int.tryParse(range.group(5) ?? '');
-      final y2 = int.tryParse(range.group(6) ?? '');
-      // Si ambos años coinciden, usamos ese año; si no, preferimos el inicio.
-      final year = (y1 != null && y2 != null && y1 == y2) ? y1 : y1;
-      final month = m1;
-      if (year != null && month != null && month >= 1 && month <= 12) {
-        return (year, month);
-      }
-      // Fallback a mes del final.
-      if (y2 != null && m2 != null && m2 >= 1 && m2 <= 12) {
-        return (y2, m2);
+      try {
+        final m1 = int.tryParse(range.group(2) ?? '');
+        final y1 = int.tryParse(range.group(3) ?? '');
+        final m2 = int.tryParse(range.group(5) ?? '');
+        final y2 = int.tryParse(range.group(6) ?? '');
+        // Si ambos años coinciden, usamos ese año; si no, preferimos el inicio.
+        final year = (y1 != null && y2 != null && y1 == y2) ? y1 : y1;
+        final month = m1;
+        if (year != null && month != null && month >= 1 && month <= 12) {
+          if (kDebugMode) {
+            debugPrint('_findPeriod: Detectado rango de fechas: mes=$month, año=$year');
+          }
+          return (year, month);
+        }
+        // Fallback a mes del final.
+        if (y2 != null && m2 != null && m2 >= 1 && m2 <= 12) {
+          if (kDebugMode) {
+            debugPrint('_findPeriod: Detectado rango (fallback final): mes=$m2, año=$y2');
+          }
+          return (y2, m2);
+        }
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('_findPeriod error parsing range: $e\n$st');
+        }
       }
     }
 
@@ -188,17 +224,29 @@ class PayrollPdfTextParser {
       r'(?:\bdel\b\s*:?\s*)(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(20\d{2})\s*(?:\bal\b)\s*(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(20\d{2})',
     ).firstMatch(text);
     if (rangeDash != null) {
-      final m1 = int.tryParse(rangeDash.group(2) ?? '');
-      final y1 = int.tryParse(rangeDash.group(3) ?? '');
-      final m2 = int.tryParse(rangeDash.group(5) ?? '');
-      final y2 = int.tryParse(rangeDash.group(6) ?? '');
-      final year = (y1 != null && y2 != null && y1 == y2) ? y1 : y1;
-      final month = m1;
-      if (year != null && month != null && month >= 1 && month <= 12) {
-        return (year, month);
-      }
-      if (y2 != null && m2 != null && m2 >= 1 && m2 <= 12) {
-        return (y2, m2);
+      try {
+        final m1 = int.tryParse(rangeDash.group(2) ?? '');
+        final y1 = int.tryParse(rangeDash.group(3) ?? '');
+        final m2 = int.tryParse(rangeDash.group(5) ?? '');
+        final y2 = int.tryParse(rangeDash.group(6) ?? '');
+        final year = (y1 != null && y2 != null && y1 == y2) ? y1 : y1;
+        final month = m1;
+        if (year != null && month != null && month >= 1 && month <= 12) {
+          if (kDebugMode) {
+            debugPrint('_findPeriod: Detectado rango con guiones: mes=$month, año=$year');
+          }
+          return (year, month);
+        }
+        if (y2 != null && m2 != null && m2 >= 1 && m2 <= 12) {
+          if (kDebugMode) {
+            debugPrint('_findPeriod: Detectado rango con guiones (fallback): mes=$m2, año=$y2');
+          }
+          return (y2, m2);
+        }
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('_findPeriod error parsing rangeDash: $e\n$st');
+        }
       }
     }
 
@@ -237,15 +285,28 @@ class PayrollPdfTextParser {
     ];
 
     for (final pattern in patterns) {
-      final match = pattern.firstMatch(text);
-      if (match == null) continue;
-      final monthName = (match.group(1) ?? '').trim();
-      final yearStr = (match.group(2) ?? '').trim();
-      final month = monthMap[monthName];
-      final year = int.tryParse(yearStr);
-      if (month != null && year != null && month >= 1 && month <= 12) {
-        return (year, month);
+      try {
+        final match = pattern.firstMatch(text);
+        if (match == null) continue;
+        final monthName = (match.group(1) ?? '').trim();
+        final yearStr = (match.group(2) ?? '').trim();
+        final month = monthMap[monthName];
+        final year = int.tryParse(yearStr);
+        if (month != null && year != null && month >= 1 && month <= 12) {
+          if (kDebugMode) {
+            debugPrint('_findPeriod: Detectado por nombre de mes: $monthName/$year');
+          }
+          return (year, month);
+        }
+      } catch (e, st) {
+        if (kDebugMode) {
+          debugPrint('_findPeriod error parsing month name: $e\n$st');
+        }
       }
+    }
+
+    if (kDebugMode) {
+      debugPrint('_findPeriod: No se detectó período en el texto');
     }
     return null;
   }
