@@ -87,7 +87,7 @@ class GmailAuthService {
   }
 
   /// Restaura sesión sin UI. Errores de Google (p. ej. consola mal configurada)
-  /// se tratan como “sin sesión” para no dejar excepciones sin capturar.
+  /// se tratan como "sin sesión" para no dejar excepciones sin capturar.
   Future<GoogleSignInAccount?> tryRestoreSession() async {
     try {
       final lightweightFuture = _googleSignIn
@@ -114,6 +114,8 @@ class GmailAuthService {
     }
   }
 
+  /// Inicia sesión con Google. Captura excepciones y las convierte en mensajes
+  /// descriptivos. Nunca relanza excepciones sin contexto.
   Future<GoogleSignInAccount?> signIn() async {
     if (!_googleSignIn.supportsAuthenticate()) {
       throw StateError(
@@ -128,7 +130,8 @@ class GmailAuthService {
       if (kDebugMode) {
         debugPrint('GmailAuthService.signIn: $e\n$st');
       }
-      rethrow;
+      // ✅ CORREGIDO: Lanzar excepción con contexto en lugar de rethrow
+      throw Exception('Error al conectar con Gmail: $e');
     }
     return _currentUser;
   }
