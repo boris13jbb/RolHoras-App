@@ -81,7 +81,7 @@ class SettingsScreen extends ConsumerWidget {
                               const SizedBox(height: 6),
                               Text(
                                 'google-services.json ya apunta a '
-                                '“rol-pagos-saas-b7b04” con OAuth Android.\n\n'
+                                '"rol-pagos-saas-b7b04" con OAuth Android.\n\n'
                                 'En OAuth (abajo) pega este Web Client ID:\n'
                                 '${GmailAuthService.recommendedWebClientId}\n\n'
                                 'Package: ${GmailAuthService.androidPackageName}\n'
@@ -117,7 +117,7 @@ class SettingsScreen extends ConsumerWidget {
                         gmailState.isConnected
                             ? 'Sincronización local activa.'
                             : 'El remitente se configura en la tarjeta de arriba. '
-                                  'Si ves “Account reauth failed”, usa el panel web.',
+                                  'Si ves "Account reauth failed", usa el panel web.',
                       ),
                     ),
                     ExpansionTile(
@@ -286,7 +286,7 @@ class _GmailOAuthClientIdSectionState
     if (!mounted) return;
     rootScaffoldMessengerKey.currentState?.showSnackBar(
       const SnackBar(
-        content: Text('Client ID guardado. Ya puedes pulsar “Conectar Gmail”.'),
+        content: Text('Client ID guardado. Ya puedes pulsar "Conectar Gmail".'),
       ),
     );
   }
@@ -348,7 +348,7 @@ class _GmailOAuthClientIdSectionState
         Text(
           widget.hasServerClientIdConfigured
               ? 'Client ID cargado correctamente.'
-              : 'Sin Client ID: pulsa “Usar Client ID de rol-pagos-saas” o pégalo y guarda.',
+              : 'Sin Client ID: pulsa "Usar Client ID de rol-pagos-saas" o pégalo y guarda.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
@@ -358,7 +358,7 @@ class _GmailOAuthClientIdSectionState
   }
 }
 
-/// Remitente editable (antes era solo lectura con texto "fase posterior").
+/// Remitente editable con ValueKey para reconstruir al hidratar desde almacén seguro.
 class _EditableSenderSection extends ConsumerStatefulWidget {
   const _EditableSenderSection({required this.userSettingsAsync});
 
@@ -448,7 +448,10 @@ class _EditableSenderSectionState
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // ✅ CORREGIDO: Agregar ValueKey para reconstruir el campo
+              // cuando gmailPrefsLoaded cambia (hidratación desde almacén seguro)
               TextFormField(
+                key: ValueKey(current),
                 controller: _controller,
                 decoration: const InputDecoration(
                   labelText: 'Correo del remitente',
