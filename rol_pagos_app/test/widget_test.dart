@@ -1,4 +1,3 @@
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rol_pagos_app/app.dart';
@@ -6,6 +5,7 @@ import 'package:rol_pagos_app/features/hours/application/manual_hours_controller
 import 'package:rol_pagos_app/features/hours/application/hour_calculation_service.dart';
 import 'package:rol_pagos_app/features/hours/domain/hour_balance.dart';
 import 'package:rol_pagos_app/features/hours/domain/hour_payment.dart';
+import 'package:rol_pagos_app/features/payroll/application/latest_payroll_comparison_provider.dart';
 
 void main() {
   testWidgets('muestra el dashboard inicial', (tester) async {
@@ -26,6 +26,9 @@ void main() {
           paymentsForCurrentMonthProvider.overrideWith((ref) {
             return Stream.value(const <HourPayment>[]);
           }),
+          latestPayrollComparisonProvider.overrideWith((ref) {
+            return const AsyncData<LatestPayrollComparison?>(null);
+          }),
         ],
         child: const RolPagosApp(),
       ),
@@ -34,13 +37,6 @@ void main() {
     expect(find.text('Dashboard'), findsWidgets);
     expect(find.text('Control mensual de horas'), findsOneWidget);
     expect(find.text('Registrar pago'), findsWidgets);
-
-    // Desmontar explícitamente el árbol antes de finalizar el test. Drift crea
-    // un Timer(Duration.zero) al cerrar QueryStream; si el ProviderScope se
-    // destruye durante el teardown automático, ese timer queda pendiente y
-    // flutter_test falla aunque las aserciones hayan pasado.
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump();
   });
 
   test('calcula pendiente con porcentajes equivalentes', () {
