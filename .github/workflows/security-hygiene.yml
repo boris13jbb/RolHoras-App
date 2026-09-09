@@ -1,0 +1,38 @@
+name: security-hygiene
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  repository-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reject sensitive tracked artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          pattern='(^|/)(client_secret[^/]*\.json|[^/]*apps\.googleusercontent\.com\.json|[^/]*_unlocked\.pdf|q[0-9][^/]*\.pdf|sa_unlocked\.pdf|CALCULO_HORAS_Y_CONTRATO\.pdf|h\.zip)$|^rol_pagos_app/Cotrat/'
+          violations="$(git ls-files | grep -E "$pattern" || true)"
+          if [ -n "$violations" ]; then
+            echo "Archivos sensibles versionados detectados:"
+            echo "$violations"
+            exit 1
+          fi
+
+      - name: Reject private keys and obvious Google API keys
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_matches="$(git grep -nE -- '-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----' -- '*.py' '*.dart' '*.ts' '*.tsx' '*.js' '*.json' '*.yaml' '*.yml' 2>/dev/null || true)"
+          google_matches="$(git grep -nE -- 'AIza[0-9A-Za-z_-]{35}' -- '*.py' '*.dart' '*.ts' '*.tsx' '*.js' '*.json' '*.yaml' '*.yml' 2>/dev/null || true)"
+          if [ -n "$key_matches" ] || [ -n "$google_matches" ]; then
+            echo "Posible secreto hardcodeado detectado."
+            [ -z "$key_matches" ] || echo "$key_matches"
+            [ -z "$google_matches" ] || echo "$google_matches"
+            exit 1
+          fi
