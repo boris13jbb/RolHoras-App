@@ -48,6 +48,26 @@ class UserSettingsDao extends DatabaseAccessor<AppDatabase>
     await _insertDefaultSettings();
   }
 
+  /// Actualiza el remitente usado para filtrar los roles recibidos por Gmail.
+  Future<void> updateGmailSenderFilter(String sender) async {
+    final value = sender.trim();
+    if (value.isEmpty) {
+      throw ArgumentError.value(sender, 'sender', 'No puede estar vacío');
+    }
+
+    await upsertDefaultsIfMissing();
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await (update(userSettingsTable)
+          ..where((tbl) => tbl.id.equals(_kSettingsId)))
+        .write(
+      UserSettingsTableCompanion(
+        gmailSenderFilter: Value(value),
+        updatedAtMillis: Value(now),
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------
