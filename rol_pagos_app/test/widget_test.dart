@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rol_pagos_app/app.dart';
@@ -34,6 +35,11 @@ void main() {
     expect(find.text('Control mensual de horas'), findsOneWidget);
     expect(find.text('Registrar pago'), findsWidgets);
 
+    // Desmontar explícitamente el árbol antes de finalizar el test. Drift crea
+    // un Timer(Duration.zero) al cerrar QueryStream; si el ProviderScope se
+    // destruye durante el teardown automático, ese timer queda pendiente y
+    // flutter_test falla aunque las aserciones hayan pasado.
+    await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
 
