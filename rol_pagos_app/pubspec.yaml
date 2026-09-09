@@ -25,6 +25,7 @@ dependencies:
   path_provider: ^2.1.5
   sqlite3_flutter_libs: ^0.6.0+eol
   syncfusion_flutter_pdf: ^33.2.3
+  url_launcher: ^6.3.2
   workmanager: ^0.7.0
 
 dev_dependencies:

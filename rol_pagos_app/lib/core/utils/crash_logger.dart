@@ -42,7 +42,7 @@ class CrashLogger {
     try {
       final file = await _logFile();
       if (!await file.exists()) return null;
-      return file.readAsString();
+      return await file.readAsString();
     } catch (_) {
       return null;
     }
